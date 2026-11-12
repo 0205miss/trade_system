@@ -20,6 +20,7 @@ interface ActivePositionState {
   entryTime: number;
   entryPrice: number;
   totalQty: number;
+  remainingQty: number;
   nominalValue: number;
   marginUsed: number;
   currentSl: number;
@@ -29,6 +30,7 @@ interface ActivePositionState {
   tranchesFilled: number;
   totalFees: number;
   totalSlippage: number;
+  accumulatedPnL: number;
   mtfContext?: any;
 }
 
@@ -128,36 +130,47 @@ export class BacktestEngine {
               const hit = isLong ? c.high >= tp.price : c.low <= tp.price;
               if (hit) {
                 tp.hit = true;
-                const trancheCloseQty = activePosition.totalQty * (tp.closePct / 100);
-                const tpExitPrice = isLong ? tp.price * (1 - slippageBps) : tp.price * (1 + slippageBps);
-                const pnl = isLong
-                  ? (tpExitPrice - activePosition.entryPrice) * trancheCloseQty
-                  : (activePosition.entryPrice - tpExitPrice) * trancheCloseQty;
+                const trancheCloseQty = Math.min(
+                  activePosition.totalQty * (tp.closePct / 100),
+                  activePosition.remainingQty
+                );
 
-                const fee = tpExitPrice * trancheCloseQty * takerFeeRate;
-                const slip = Math.abs(tpExitPrice - tp.price) * trancheCloseQty;
-                const netPnl = pnl - fee;
+                if (trancheCloseQty > 0) {
+                  const tpExitPrice = isLong ? tp.price * (1 - slippageBps) : tp.price * (1 + slippageBps);
+                  const pnl = isLong
+                    ? (tpExitPrice - activePosition.entryPrice) * trancheCloseQty
+                    : (activePosition.entryPrice - tpExitPrice) * trancheCloseQty;
 
-                cash += netPnl;
-                totalFeesPaid += fee;
-                totalSlippageCost += slip;
-                if (netPnl < 0) dailyLoss += Math.abs(netPnl);
+                  const fee = tpExitPrice * trancheCloseQty * takerFeeRate;
+                  const slip = Math.abs(tpExitPrice - tp.price) * trancheCloseQty;
+                  const netPnl = pnl - fee;
 
-                // Move SL to Break-Even if TP1 hit
-                if (tp.target === 1 && !activePosition.isBeTriggered) {
-                  activePosition.isBeTriggered = true;
-                  // Shift to entry price + slight buffer to guarantee zero loss
-                  activePosition.currentSl = isLong
-                    ? activePosition.entryPrice * (1 + makerFeeRate * 2)
-                    : activePosition.entryPrice * (1 - makerFeeRate * 2);
-                }
+                  cash += netPnl;
+                  totalFeesPaid += fee;
+                  totalSlippageCost += slip;
+                  activePosition.totalFees += fee;
+                  activePosition.totalSlippage += slip;
+                  activePosition.accumulatedPnL += netPnl;
+                  activePosition.remainingQty -= trancheCloseQty;
 
-                // If this TP exhausts remaining position
-                if (tp.target === 3) {
-                  closedReason = 'TP3';
-                  exitPrice = tpExitPrice;
-                  closedFraction = 1.0;
-                  break;
+                  if (netPnl < 0) dailyLoss += Math.abs(netPnl);
+
+                  // Move SL to Break-Even if TP1 hit
+                  if (tp.target === 1 && !activePosition.isBeTriggered) {
+                    activePosition.isBeTriggered = true;
+                    // Shift to entry price + slight buffer to guarantee zero loss
+                    activePosition.currentSl = isLong
+                      ? activePosition.entryPrice * (1 + makerFeeRate * 2)
+                      : activePosition.entryPrice * (1 - makerFeeRate * 2);
+                  }
+
+                  // If this TP exhausts remaining position
+                  if (tp.target === 3 || activePosition.remainingQty <= 0.000001) {
+                    closedReason = 'TP3';
+                    exitPrice = tpExitPrice;
+                    closedFraction = 1.0;
+                    break;
+                  }
                 }
               }
             }
@@ -179,23 +192,30 @@ export class BacktestEngine {
           }
         }
 
-        // Finalize trade closure if SL or final target hit
-        if (closedReason && closedFraction > 0) {
-          const finalQty = activePosition.totalQty;
+        // Finalize trade closure if SL, BE, or final target hit
+        if (closedReason && activePosition.remainingQty > 0) {
+          const finalQty = activePosition.remainingQty;
           const nominalVal = finalQty * exitPrice;
           const rawPnl = isLong
             ? (exitPrice - activePosition.entryPrice) * finalQty
             : (activePosition.entryPrice - exitPrice) * finalQty;
           const exitFee = nominalVal * takerFeeRate;
-          const exitSlip = Math.abs(exitPrice - (isLong ? activePosition.currentSl : activePosition.currentSl)) * finalQty;
+          const exitSlip = Math.abs(exitPrice - activePosition.currentSl) * finalQty;
           const netPnl = rawPnl - exitFee;
 
           cash += netPnl;
           totalFeesPaid += exitFee;
           totalSlippageCost += exitSlip;
+          activePosition.totalFees += exitFee;
+          activePosition.totalSlippage += exitSlip;
+          activePosition.accumulatedPnL += netPnl;
+          activePosition.remainingQty = 0;
           if (netPnl < 0) dailyLoss += Math.abs(netPnl);
+        }
 
-          const rMult = activePosition.initialSlDistance > 0 ? rawPnl / activePosition.initialSlDistance : 0;
+        if (closedReason) {
+          const totalTradePnL = activePosition.accumulatedPnL;
+          const rMult = activePosition.initialSlDistance > 0 ? totalTradePnL / activePosition.initialSlDistance : 0;
 
           trades.push({
             id: `trade-${trades.length + 1}`,
@@ -206,14 +226,14 @@ export class BacktestEngine {
             exitTime: c.time,
             entryPrice: activePosition.entryPrice,
             exitPrice,
-            quantity: finalQty,
+            quantity: activePosition.totalQty,
             nominalValue: activePosition.nominalValue,
             marginUsed: activePosition.marginUsed,
             tranchesFilled: activePosition.tranchesFilled,
-            feePaid: activePosition.totalFees + exitFee,
-            slippageCost: activePosition.totalSlippage + exitSlip,
-            pnlAmount: netPnl,
-            pnlPct: activePosition.marginUsed > 0 ? (netPnl / activePosition.marginUsed) * 100 : 0,
+            feePaid: Math.round(activePosition.totalFees * 100) / 100,
+            slippageCost: Math.round(activePosition.totalSlippage * 100) / 100,
+            pnlAmount: Math.round(totalTradePnL * 100) / 100,
+            pnlPct: activePosition.marginUsed > 0 ? Math.round(((totalTradePnL / activePosition.marginUsed) * 100) * 10) / 10 : 0,
             rMultiple: Number(rMult.toFixed(2)),
             exitReason: closedReason,
             mtfContext: activePosition.mtfContext,
@@ -317,6 +337,7 @@ export class BacktestEngine {
               entryTime: c.time,
               entryPrice: executedEntryPrice,
               totalQty: targetQty,
+              remainingQty: targetQty,
               nominalValue: nominal,
               marginUsed: margin,
               currentSl: stopLossPrice,
@@ -326,6 +347,7 @@ export class BacktestEngine {
               tranchesFilled: 1,
               totalFees: entryFee,
               totalSlippage: entrySlip,
+              accumulatedPnL: 0,
               mtfContext: mtfSnapshot,
             };
           }
@@ -334,11 +356,11 @@ export class BacktestEngine {
 
       // Mark equity curve point
       equity = cash;
-      if (activePosition) {
+      if (activePosition && activePosition.remainingQty > 0) {
         const unrealized =
           activePosition.direction === 'LONG'
-            ? (c.close - activePosition.entryPrice) * activePosition.totalQty
-            : (activePosition.entryPrice - c.close) * activePosition.totalQty;
+            ? (c.close - activePosition.entryPrice) * activePosition.remainingQty
+            : (activePosition.entryPrice - c.close) * activePosition.remainingQty;
         equity += unrealized;
       }
 

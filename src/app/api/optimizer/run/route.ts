@@ -20,11 +20,10 @@ export async function POST(req: NextRequest) {
       const timeframes: Timeframe[] = ['4h', '1h', '15m', '5m'];
       const candlesMap: Record<Timeframe, Candle[]> = {} as any;
 
-      // Fetch candles for each timeframe
+      // Consistently fetch 600 candles for each timeframe
       await Promise.all(
         timeframes.map(async (tf) => {
-          const limit = tf === '4h' ? 300 : tf === '1h' ? 500 : 600;
-          candlesMap[tf] = await CandleCacheManager.getCandles(symbol, tf, limit);
+          candlesMap[tf] = await CandleCacheManager.getCandles(symbol, tf, 600);
         })
       );
 
@@ -53,16 +52,21 @@ export async function POST(req: NextRequest) {
 
     // 2. Single Strategy Backtest / Optimization
     const tf = timeframe as Timeframe;
-    const strategy: StrategyModel = body.strategyConfig || OptStrategyService.getDefaultBaseline(tf, symbol);
+    let strategy: StrategyModel = body.strategyConfig;
+    if (!strategy || strategy.timeframe !== tf) {
+      const dbStrats = await OptStrategyService.getStrategies(tf);
+      const active = dbStrats.find((s) => s.isActive && s.symbol === symbol);
+      strategy = active || OptStrategyService.getDefaultBaseline(tf, symbol);
+    }
 
     const candles = await CandleCacheManager.getCandles(symbol, tf, 600);
     const htfMap: TimeframeCandleMap = {};
 
     if (tf === '5m' || tf === '15m') {
-      htfMap['4h'] = await CandleCacheManager.getCandles(symbol, '4h', 300);
-      htfMap['1h'] = await CandleCacheManager.getCandles(symbol, '1h', 400);
+      htfMap['4h'] = await CandleCacheManager.getCandles(symbol, '4h', 600);
+      htfMap['1h'] = await CandleCacheManager.getCandles(symbol, '1h', 600);
     } else if (tf === '1h') {
-      htfMap['4h'] = await CandleCacheManager.getCandles(symbol, '4h', 300);
+      htfMap['4h'] = await CandleCacheManager.getCandles(symbol, '4h', 600);
     }
 
     if (isOptimize) {

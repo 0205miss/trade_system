@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { TradingViewChart } from '@/components/TradingViewChart';
 import { MetricsCards } from '@/components/MetricsCards';
@@ -20,7 +20,7 @@ import {
 } from '@/lib/engine/types';
 import { OptStrategyService } from '@/lib/services/optStrategyService';
 import { MultiTimeframeAggregator } from '@/lib/engine/mtf';
-import { RefreshCw, AlertCircle, Layers, SlidersHorizontal, ArrowLeft } from 'lucide-react';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 export default function StudioPage() {
   const [symbol, setSymbol] = useState<string>('BTC-USDT');
@@ -36,12 +36,9 @@ export default function StudioPage() {
   const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sync strategy when timeframe or symbol changes (if not in ALL mode)
-  useEffect(() => {
-    if (timeframe !== 'ALL') {
-      setStrategy(OptStrategyService.getDefaultBaseline(timeframe, symbol));
-    }
-  }, [timeframe, symbol]);
+  // Keep ref of latest portfolio result to avoid stale closures
+  const portfolioResultRef = useRef<PortfolioBacktestResult | null>(null);
+  portfolioResultRef.current = portfolioResult;
 
   // Load candles & trigger initial backtest (single or portfolio)
   const loadDataAndBacktest = useCallback(async () => {
@@ -50,8 +47,8 @@ export default function StudioPage() {
     try {
       const candleTf = timeframe === 'ALL' ? '1h' : timeframe;
 
-      // 1. Fetch candles from API for charting and MTF
-      const res = await fetch(`/api/candles?symbol=${symbol}&timeframe=${candleTf}&limit=500`);
+      // 1. Fetch candles from API for charting and MTF (consistently 600 bars)
+      const res = await fetch(`/api/candles?symbol=${symbol}&timeframe=${candleTf}&limit=600`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
@@ -68,13 +65,17 @@ export default function StudioPage() {
       }
 
       // 3. Run backtest (Portfolio or Single)
+      // Guard against state bleed: only send strategy if its timeframe matches current timeframe
+      const isMismatched = strategy.timeframe !== timeframe;
+      const configToSend = timeframe === 'ALL' || isMismatched ? undefined : strategy;
+
       const btRes = await fetch('/api/optimizer/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           symbol,
           timeframe,
-          strategyConfig: timeframe === 'ALL' ? undefined : strategy,
+          strategyConfig: configToSend,
           optimize: false,
         }),
       });
@@ -85,8 +86,18 @@ export default function StudioPage() {
         setPortfolioResult(btData.result);
         setBacktestResult(null);
       } else {
-        setBacktestResult(btData.result);
-        setPortfolioResult(null);
+        const cachedPortResult = portfolioResultRef.current?.individualResults[timeframe];
+        if (cachedPortResult && !configToSend) {
+          setBacktestResult(cachedPortResult);
+          if (cachedPortResult.configSnapshot) {
+            setStrategy(cachedPortResult.configSnapshot);
+          }
+        } else {
+          setBacktestResult(btData.result);
+          if (btData.result?.configSnapshot) {
+            setStrategy(btData.result.configSnapshot);
+          }
+        }
       }
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -98,6 +109,18 @@ export default function StudioPage() {
   useEffect(() => {
     loadDataAndBacktest();
   }, [symbol, timeframe]);
+
+  // Unified timeframe switch handler ensuring zero state bleed and 100% data consistency
+  const handleTimeframeChange = (tf: Timeframe | 'ALL') => {
+    if (tf !== 'ALL' && portfolioResultRef.current?.individualResults[tf]) {
+      const exactSingleResult = portfolioResultRef.current.individualResults[tf];
+      setBacktestResult(exactSingleResult);
+      if (exactSingleResult.configSnapshot) {
+        setStrategy(exactSingleResult.configSnapshot);
+      }
+    }
+    setTimeframe(tf);
+  };
 
   // Manual Trigger: Re-run Backtest for single strategy
   const handleRunBacktest = async () => {
@@ -118,6 +141,9 @@ export default function StudioPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
       setBacktestResult(data.result);
+      if (data.result?.configSnapshot) {
+        setStrategy(data.result.configSnapshot);
+      }
     } catch (err: any) {
       setErrorMsg(err.message);
     } finally {
@@ -166,7 +192,7 @@ export default function StudioPage() {
         symbol={symbol}
         onSymbolChange={setSymbol}
         timeframe={timeframe}
-        onTimeframeChange={setTimeframe}
+        onTimeframeChange={handleTimeframeChange}
         price={latestPrice}
       />
 
@@ -207,7 +233,7 @@ export default function StudioPage() {
           {/* Quick Mode Toggle */}
           <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono">
             <button
-              onClick={() => setTimeframe('ALL')}
+              onClick={() => handleTimeframeChange('ALL')}
               className={`px-3 py-1 rounded transition-colors ${
                 timeframe === 'ALL'
                   ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
@@ -220,7 +246,7 @@ export default function StudioPage() {
             {(['4h', '1h', '15m', '5m'] as Timeframe[]).map((tf) => (
               <button
                 key={tf}
-                onClick={() => setTimeframe(tf)}
+                onClick={() => handleTimeframeChange(tf)}
                 className={`px-2.5 py-1 rounded transition-colors ${
                   timeframe === tf
                     ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
@@ -237,12 +263,19 @@ export default function StudioPage() {
         <MTFMatrix snapshot={mtfSnapshot} />
 
         {/* 2. MODE SPECIFIC VIEWS */}
+        {timeframe === 'ALL' && !portfolioResult && isLoading && (
+          <div className="flex flex-col items-center justify-center p-12 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900/50">
+            <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-3" />
+            <p className="text-sm font-mono text-zinc-600 dark:text-zinc-400">正在執行全策略 (4H, 1H, 15M, 5M) 綜合回測與資金組合運算中...</p>
+          </div>
+        )}
+
         {timeframe === 'ALL' && portfolioResult && (
           <>
             {/* 2.1 Portfolio Summary Dashboard Card */}
             <PortfolioSummaryCard
               portfolioResult={portfolioResult}
-              onSelectTimeframe={(tf) => setTimeframe(tf)}
+              onSelectTimeframe={handleTimeframeChange}
             />
 
             {/* 2.2 Combined Core Performance Metrics */}

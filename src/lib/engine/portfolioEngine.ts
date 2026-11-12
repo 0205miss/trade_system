@@ -47,7 +47,7 @@ export class PortfolioEngine {
     allTrades.sort((a, b) => a.entryTime - b.entryTime);
 
     // 3. Build unified portfolio equity curve
-    // Use 1h or 15m candles as time base, falling back to any available timeframe
+    // Base timeline on 1h or 15m candles
     const baseCandles =
       candlesByTimeframe['1h'] ||
       candlesByTimeframe['15m'] ||
@@ -56,28 +56,20 @@ export class PortfolioEngine {
       [];
 
     const equityCurve: EquityPoint[] = [];
-    let cash = initialCapital;
     let peakEquity = initialCapital;
     let maxDrawdownPct = 0;
 
     const initialBenchmarkPrice = baseCandles.length > 0 ? baseCandles[0].close : 1;
 
-    // Simulate equity curve step by step
     for (let i = 0; i < baseCandles.length; i++) {
       const c = baseCandles[i];
       const t = c.time;
 
       // Realized PnL from trades that exited at or before time t
-      // To ensure no double counting, sum PnL of trades closed <= t
       let realizedPnL = 0;
-      let totalFees = 0;
-      let totalSlippage = 0;
-
       for (const trade of allTrades) {
         if (trade.exitTime <= t) {
           realizedPnL += trade.pnlAmount;
-          totalFees += trade.feePaid;
-          totalSlippage += trade.slippageCost;
         }
       }
 
@@ -85,7 +77,6 @@ export class PortfolioEngine {
       let unrealizedPnL = 0;
       for (const trade of allTrades) {
         if (trade.entryTime <= t && trade.exitTime > t) {
-          // Find price for this trade's symbol at time t (approximate with close)
           const isLong = trade.direction === 'LONG';
           const pnl = isLong
             ? (c.close - trade.entryPrice) * trade.quantity
@@ -111,21 +102,39 @@ export class PortfolioEngine {
     }
 
     // 4. Portfolio Performance Metrics
-    const finalCapital = equityCurve.length > 0 ? equityCurve[equityCurve.length - 1].equity : initialCapital;
-    const netProfitAmount = finalCapital - initialCapital;
-    const netProfitPct = (netProfitAmount / initialCapital) * 100;
+    // Calculate total net profit across all individual strategies
+    const sumIndividualNetProfit = Object.values(individualResults).reduce(
+      (sum, res) => sum + res.netProfitAmount,
+      0
+    );
+    const sumTotalTrades = Object.values(individualResults).reduce(
+      (sum, res) => sum + res.totalTrades,
+      0
+    );
+    const sumWinningTrades = Object.values(individualResults).reduce(
+      (sum, res) => sum + res.winningTrades,
+      0
+    );
+    const sumLosingTrades = Object.values(individualResults).reduce(
+      (sum, res) => sum + res.losingTrades,
+      0
+    );
 
-    const totalTrades = allTrades.length;
-    const winningTrades = allTrades.filter((t) => t.pnlAmount > 0).length;
-    const losingTrades = allTrades.filter((t) => t.pnlAmount <= 0).length;
-    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+    const netProfitAmount = Math.round(sumIndividualNetProfit * 100) / 100;
+    const netProfitPct = Math.round(((netProfitAmount / initialCapital) * 100) * 100) / 100;
+    const finalCapital = Math.round((initialCapital + netProfitAmount) * 100) / 100;
+
+    const totalTrades = sumTotalTrades;
+    const winningTrades = sumWinningTrades;
+    const losingTrades = sumLosingTrades;
+    const winRate = totalTrades > 0 ? Math.round((winningTrades / totalTrades) * 1000) / 10 : 0;
 
     const grossProfit = allTrades.filter((t) => t.pnlAmount > 0).reduce((sum, t) => sum + t.pnlAmount, 0);
     const grossLoss = Math.abs(allTrades.filter((t) => t.pnlAmount < 0).reduce((sum, t) => sum + t.pnlAmount, 0));
-    const profitFactor = grossLoss === 0 ? (grossProfit > 0 ? 99 : 1) : grossProfit / grossLoss;
+    const profitFactor = grossLoss === 0 ? (grossProfit > 0 ? 99 : 1) : Math.round((grossProfit / grossLoss) * 100) / 100;
 
-    const totalFeesPaid = allTrades.reduce((sum, t) => sum + t.feePaid, 0);
-    const totalSlippageCost = allTrades.reduce((sum, t) => sum + t.slippageCost, 0);
+    const totalFeesPaid = Math.round(allTrades.reduce((sum, t) => sum + t.feePaid, 0) * 100) / 100;
+    const totalSlippageCost = Math.round(allTrades.reduce((sum, t) => sum + t.slippageCost, 0) * 100) / 100;
 
     // Sharpe & Sortino
     const returns: number[] = [];
@@ -147,37 +156,41 @@ export class PortfolioEngine {
         downReturns.length > 0 ? downReturns.reduce((sum, r) => sum + Math.pow(r, 2), 0) / downReturns.length : 0.0001;
       const downDev = Math.sqrt(downVariance);
 
-      const periodsPerYear = 365 * 24; // 1h base
-      if (stdDev > 0) sharpeRatio = (meanReturn / stdDev) * Math.sqrt(periodsPerYear);
-      if (downDev > 0) sortinoRatio = (meanReturn / downDev) * Math.sqrt(periodsPerYear);
+      const periodsPerYear = 365 * 24;
+      if (stdDev > 0) sharpeRatio = Math.round((meanReturn / stdDev) * Math.sqrt(periodsPerYear) * 100) / 100;
+      if (downDev > 0) sortinoRatio = Math.round((meanReturn / downDev) * Math.sqrt(periodsPerYear) * 100) / 100;
     }
 
-    const calmarRatio = maxDrawdownPct > 0 ? netProfitPct / maxDrawdownPct : 0;
+    const calmarRatio = maxDrawdownPct > 0 ? Math.round((netProfitPct / maxDrawdownPct) * 100) / 100 : 0;
 
-    // 5. Per-Strategy Contributions & Breakdown
+    // 5. Per-Strategy Contributions & Breakdown (Exact matching with individual results)
     const strategyContributions: StrategyContribution[] = strategies.map((strat) => {
       const stratRes = individualResults[strat.timeframe];
       const stratTrades = allTrades.filter((t) => t.timeframe === strat.timeframe);
-      const stratProfit = stratTrades.reduce((sum, t) => sum + t.pnlAmount, 0);
-      const stratWins = stratTrades.filter((t) => t.pnlAmount > 0).length;
-      const stratGrossWin = stratTrades.filter((t) => t.pnlAmount > 0).reduce((sum, t) => sum + t.pnlAmount, 0);
-      const stratGrossLoss = Math.abs(stratTrades.filter((t) => t.pnlAmount < 0).reduce((sum, t) => sum + t.pnlAmount, 0));
+
+      const netProfit = stratRes ? stratRes.netProfitAmount : 0;
+      const netPct = stratRes ? stratRes.netProfitPct : 0;
+      const stratWinRate = stratRes ? stratRes.winRate : 0;
+      const tradesCount = stratRes ? stratRes.totalTrades : stratTrades.length;
+      const stratMaxDrawdown = stratRes ? stratRes.maxDrawdownPct : 0;
+      const stratPf = stratRes ? stratRes.profitFactor : 1;
+      const stratSharpe = stratRes ? stratRes.sharpeRatio : 0;
 
       const contributionPct =
-        netProfitAmount > 0 ? Math.round((stratProfit / netProfitAmount) * 1000) / 10 : 0;
+        netProfitAmount > 0 ? Math.round((netProfit / netProfitAmount) * 1000) / 10 : 0;
 
       return {
         timeframe: strat.timeframe,
         name: strat.name,
         symbol: strat.symbol,
-        tradesCount: stratTrades.length,
-        winRate: stratTrades.length > 0 ? Math.round((stratWins / stratTrades.length) * 1000) / 10 : 0,
-        netProfitAmount: Math.round(stratProfit * 100) / 100,
-        netProfitPct: Math.round(((stratProfit / initialCapital) * 100) * 100) / 100,
+        tradesCount,
+        winRate: stratWinRate,
+        netProfitAmount: netProfit,
+        netProfitPct: netPct,
         profitContributionPct: contributionPct,
-        maxDrawdownPct: stratRes ? stratRes.maxDrawdownPct : 0,
-        profitFactor: stratGrossLoss === 0 ? (stratGrossWin > 0 ? 99 : 1) : Math.round((stratGrossWin / stratGrossLoss) * 100) / 100,
-        sharpeRatio: stratRes ? stratRes.sharpeRatio : 0,
+        maxDrawdownPct: stratMaxDrawdown,
+        profitFactor: stratPf,
+        sharpeRatio: stratSharpe,
       };
     });
 
@@ -188,20 +201,20 @@ export class PortfolioEngine {
       startTime: baseCandles.length > 0 ? baseCandles[0].time : 0,
       endTime: baseCandles.length > 0 ? baseCandles[baseCandles.length - 1].time : 0,
       initialCapital,
-      finalCapital: Math.round(finalCapital * 100) / 100,
-      netProfitAmount: Math.round(netProfitAmount * 100) / 100,
-      netProfitPct: Math.round(netProfitPct * 100) / 100,
-      winRate: Math.round(winRate * 10) / 10,
-      profitFactor: Math.round(profitFactor * 100) / 100,
+      finalCapital,
+      netProfitAmount,
+      netProfitPct,
+      winRate,
+      profitFactor,
       maxDrawdownPct: Math.round(maxDrawdownPct * 100) / 100,
-      sharpeRatio: Math.round(sharpeRatio * 100) / 100,
-      sortinoRatio: Math.round(sortinoRatio * 100) / 100,
-      calmarRatio: Math.round(calmarRatio * 100) / 100,
+      sharpeRatio,
+      sortinoRatio,
+      calmarRatio,
       totalTrades,
       winningTrades,
       losingTrades,
-      totalFeesPaid: Math.round(totalFeesPaid * 100) / 100,
-      totalSlippageCost: Math.round(totalSlippageCost * 100) / 100,
+      totalFeesPaid,
+      totalSlippageCost,
       trades: allTrades,
       equityCurve,
       strategyContributions,
