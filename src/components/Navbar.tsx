@@ -10,8 +10,8 @@ import { BarChart3, Sliders, FileText, Cpu, Sun, Moon } from 'lucide-react';
 interface NavbarProps {
   symbol?: string;
   onSymbolChange?: (symbol: string) => void;
-  timeframe?: Timeframe;
-  onTimeframeChange?: (tf: Timeframe) => void;
+  timeframe?: Timeframe | 'ALL';
+  onTimeframeChange?: (tf: Timeframe | 'ALL') => void;
   price?: number;
 }
 
@@ -26,7 +26,7 @@ export function Navbar({
   const { resolvedTheme, toggleTheme } = useTheme();
 
   const symbols = ['BTC-USDT', 'ETH-USDT', 'SOL-USDT'];
-  const timeframes: Timeframe[] = ['4h', '1h', '15m', '5m'];
+  const timeframes: (Timeframe | 'ALL')[] = ['ALL', '4h', '1h', '15m', '5m'];
 
   return (
     <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/90 backdrop-blur sticky top-0 z-50 transition-colors duration-150">
@@ -124,7 +124,7 @@ export function Navbar({
                       : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                   }`}
                 >
-                  {tf.toUpperCase()}
+                  {tf === 'ALL' ? 'ALL 全策略' : tf.toUpperCase()}
                 </button>
               ))}
             </div>

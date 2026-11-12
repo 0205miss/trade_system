@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { TradeRecord } from '@/lib/engine/types';
+import { TradeRecord, Timeframe } from '@/lib/engine/types';
 import { ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
 
 interface TradeLogTableProps {
@@ -10,51 +10,76 @@ interface TradeLogTableProps {
 
 export function TradeLogTable({ trades }: TradeLogTableProps) {
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'LONG' | 'SHORT'>('ALL');
+  const [filterTf, setFilterTf] = useState<Timeframe | 'ALL'>('ALL');
 
   const filteredTrades = trades.filter((t) => {
-    if (filterDirection === 'ALL') return true;
-    return t.direction === filterDirection;
+    if (filterDirection !== 'ALL' && t.direction !== filterDirection) return false;
+    if (filterTf !== 'ALL' && t.timeframe !== filterTf) return false;
+    return true;
   });
 
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-lg overflow-hidden shadow-sm transition-colors">
-      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3.5 py-2.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="font-bold text-zinc-900 dark:text-zinc-100">交易明細紀錄 (Trade Execution Log)</span>
-          <span className="text-[11px] font-mono text-zinc-500">({trades.length} 筆)</span>
+          <span className="text-[11px] font-mono text-zinc-500">
+            ({filteredTrades.length} / {trades.length} 筆)
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Filter className="w-3 h-3 text-zinc-500" />
-          <button
-            onClick={() => setFilterDirection('ALL')}
-            className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-              filterDirection === 'ALL'
-                ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-bold shadow-xs'
-                : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
-            }`}
-          >
-            全部
-          </button>
-          <button
-            onClick={() => setFilterDirection('LONG')}
-            className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-              filterDirection === 'LONG'
-                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/30'
-                : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
-            }`}
-          >
-            僅做多
-          </button>
-          <button
-            onClick={() => setFilterDirection('SHORT')}
-            className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-              filterDirection === 'SHORT'
-                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/30'
-                : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
-            }`}
-          >
-            僅做空
-          </button>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Timeframe Filter */}
+          <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/60 p-0.5 rounded text-[11px] font-mono">
+            {['ALL', '4h', '1h', '15m', '5m'].map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setFilterTf(tf as any)}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  filterTf === tf
+                    ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold shadow-xs'
+                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
+                }`}
+              >
+                {tf.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Direction Filter */}
+          <div className="flex items-center gap-1">
+            <Filter className="w-3 h-3 text-zinc-400" />
+            <button
+              onClick={() => setFilterDirection('ALL')}
+              className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                filterDirection === 'ALL'
+                  ? 'bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-bold shadow-xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
+              }`}
+            >
+              全部
+            </button>
+            <button
+              onClick={() => setFilterDirection('LONG')}
+              className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                filterDirection === 'LONG'
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/30'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
+              }`}
+            >
+              僅做多
+            </button>
+            <button
+              onClick={() => setFilterDirection('SHORT')}
+              className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
+                filterDirection === 'SHORT'
+                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold border border-rose-500/30'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
+              }`}
+            >
+              僅做空
+            </button>
+          </div>
         </div>
       </div>
 
@@ -63,7 +88,7 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
           <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800 text-[11px]">
             <tr>
               <th className="py-2 px-3">時間 (Time)</th>
-              <th className="py-2 px-3">方向</th>
+              <th className="py-2 px-3">策略 / 方向</th>
               <th className="py-2 px-3 text-right">進場均價</th>
               <th className="py-2 px-3 text-right">出場均價</th>
               <th className="py-2 px-3 text-right">手續費</th>
@@ -76,12 +101,21 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
             {filteredTrades.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-6 text-center text-zinc-400 dark:text-zinc-500 text-xs">
-                  此回測期間無觸發交易。
+                  此條件下無觸發交易。
                 </td>
               </tr>
             ) : (
               filteredTrades.slice().reverse().map((t) => {
                 const isWin = t.pnlAmount > 0;
+                const tfBadgeColor =
+                  t.timeframe === '4h'
+                    ? 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20'
+                    : t.timeframe === '1h'
+                    ? 'text-sky-600 dark:text-sky-400 bg-sky-500/10 border-sky-500/20'
+                    : t.timeframe === '15m'
+                    ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20'
+                    : 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+
                 return (
                   <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors">
                     <td className="py-2 px-3 text-zinc-600 dark:text-zinc-400 text-[11px]">
@@ -93,16 +127,21 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
                       })}
                     </td>
                     <td className="py-2 px-3">
-                      <span
-                        className={`inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded ${
-                          t.direction === 'LONG'
-                            ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
-                            : 'text-rose-600 dark:text-rose-400 bg-rose-500/10'
-                        }`}
-                      >
-                        {t.direction === 'LONG' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                        {t.direction}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[9px] font-bold px-1 py-0.2 rounded border ${tfBadgeColor}`}>
+                          {t.timeframe.toUpperCase()}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-0.5 text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                            t.direction === 'LONG'
+                              ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
+                              : 'text-rose-600 dark:text-rose-400 bg-rose-500/10'
+                          }`}
+                        >
+                          {t.direction === 'LONG' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                          {t.direction}
+                        </span>
+                      </div>
                     </td>
                     <td className="py-2 px-3 text-right font-medium">${t.entryPrice.toFixed(1)}</td>
                     <td className="py-2 px-3 text-right font-medium">${t.exitPrice.toFixed(1)}</td>

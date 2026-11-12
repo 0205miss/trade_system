@@ -1,11 +1,11 @@
 'use client';
 
 import React from 'react';
-import { BacktestResult } from '@/lib/engine/types';
+import { BacktestResult, PortfolioBacktestResult } from '@/lib/engine/types';
 import { TrendingUp, ShieldAlert, Award, Percent, DollarSign, Activity } from 'lucide-react';
 
 interface MetricsCardsProps {
-  result: BacktestResult | null;
+  result: BacktestResult | PortfolioBacktestResult | null;
   isLoading?: boolean;
 }
 

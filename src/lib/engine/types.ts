@@ -171,3 +171,44 @@ export interface MTFSnapshot {
   tf5m?: { trend: 'BULLISH' | 'BEARISH' | 'NEUTRAL'; stochRsiK: number; rvol: number };
   overallConfluenceScore: number; // 0 to 100
 }
+
+export interface StrategyContribution {
+  timeframe: Timeframe;
+  name: string;
+  symbol: string;
+  tradesCount: number;
+  winRate: number;
+  netProfitAmount: number;
+  netProfitPct: number;
+  profitContributionPct: number;
+  maxDrawdownPct: number;
+  profitFactor: number;
+  sharpeRatio: number;
+}
+
+export interface PortfolioBacktestResult {
+  runId: string;
+  symbol: string;
+  timeframes: Timeframe[];
+  startTime: number;
+  endTime: number;
+  initialCapital: number;
+  finalCapital: number;
+  netProfitAmount: number;
+  netProfitPct: number;
+  winRate: number;
+  profitFactor: number;
+  maxDrawdownPct: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  calmarRatio: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  totalFeesPaid: number;
+  totalSlippageCost: number;
+  trades: TradeRecord[];
+  equityCurve: EquityPoint[];
+  strategyContributions: StrategyContribution[];
+  individualResults: Record<string, BacktestResult>;
+}
