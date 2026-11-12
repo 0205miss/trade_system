@@ -14,7 +14,6 @@ export function EquityChart({ equityCurve, height = 240 }: EquityChartProps) {
   const points = equityCurve;
   const equities = points.map((p) => p.equity);
   const benchmarks = points.map((p) => p.benchmarkEquity);
-  const drawdowns = points.map((p) => p.drawdownPct);
 
   const minEquity = Math.min(...equities, ...benchmarks);
   const maxEquity = Math.max(...equities, ...benchmarks);
@@ -46,22 +45,22 @@ export function EquityChart({ equityCurve, height = 240 }: EquityChartProps) {
   const isUp = latestEquity >= initialEquity;
 
   return (
-    <div className="border border-zinc-800 bg-zinc-950 rounded-lg p-3.5">
+    <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-lg p-3.5 shadow-sm transition-colors">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold text-zinc-200">權益曲線 vs 買入持有基準</span>
+          <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">權益曲線 vs 買入持有基準</span>
           <div className="flex items-center gap-3 text-[11px] font-mono">
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <span className="w-2.5 h-0.5 bg-emerald-400 inline-block" /> 策略本金
+            <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+              <span className="w-2.5 h-0.5 bg-emerald-500 inline-block rounded" /> 策略本金
             </span>
-            <span className="flex items-center gap-1.5 text-zinc-500">
-              <span className="w-2.5 h-0.5 bg-zinc-600 inline-block stroke-dasharray" /> Buy & Hold
+            <span className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+              <span className="w-2.5 h-0.5 bg-zinc-400 dark:bg-zinc-600 inline-block stroke-dasharray" /> Buy & Hold
             </span>
           </div>
         </div>
         <div className="text-xs font-mono">
-          <span className="text-zinc-500">當前本金: </span>
-          <span className={`font-bold ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+          <span className="text-zinc-500 dark:text-zinc-400">當前本金: </span>
+          <span className={`font-bold ${isUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
             ${latestEquity.toLocaleString('en-US', { minimumFractionDigits: 1 })}
           </span>
         </div>
@@ -73,19 +72,25 @@ export function EquityChart({ equityCurve, height = 240 }: EquityChartProps) {
           className="w-full h-auto overflow-visible select-none"
           preserveAspectRatio="none"
         >
-          {/* Subtle horizontal grid lines */}
+          {/* Horizontal grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map((pct, idx) => {
             const y = paddingY + chartH * (1 - pct);
             const val = minEquity + range * pct;
             return (
               <g key={idx}>
-                <line x1={paddingX} y1={y} x2={width - paddingX} y2={y} stroke="#18181b" strokeWidth="1" />
+                <line
+                  x1={paddingX}
+                  y1={y}
+                  x2={width - paddingX}
+                  y2={y}
+                  stroke="currentColor"
+                  className="text-zinc-200 dark:text-zinc-800"
+                  strokeWidth="1"
+                />
                 <text
                   x={paddingX - 6}
                   y={y + 3}
-                  fill="#71717a"
-                  fontSize="9"
-                  fontFamily="monospace"
+                  className="fill-zinc-400 dark:fill-zinc-500 font-mono text-[9px]"
                   textAnchor="end"
                 >
                   ${Math.round(val)}
@@ -95,7 +100,14 @@ export function EquityChart({ equityCurve, height = 240 }: EquityChartProps) {
           })}
 
           {/* Benchmark Line (Gray dashed) */}
-          <path d={benchmarkPath} fill="none" stroke="#52525b" strokeWidth="1.2" strokeDasharray="3 3" />
+          <path
+            d={benchmarkPath}
+            fill="none"
+            stroke="currentColor"
+            className="text-zinc-400 dark:text-zinc-600"
+            strokeWidth="1.2"
+            strokeDasharray="3 3"
+          />
 
           {/* Strategy Equity Line (Emerald solid) */}
           <path d={equityPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />

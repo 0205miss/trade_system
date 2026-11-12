@@ -318,21 +318,21 @@ export default function VSTTradingPage() {
         </div>
 
         {/* 4. Live Activity Terminal Log */}
-        <div className="border border-zinc-200 dark:border-zinc-800 bg-zinc-950 text-zinc-100 rounded-lg overflow-hidden font-mono text-xs shadow-sm">
-          <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900 flex items-center justify-between text-zinc-400 text-[11px]">
-            <div className="flex items-center gap-1.5 text-zinc-200 font-semibold">
-              <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-lg overflow-hidden font-mono text-xs shadow-sm transition-colors">
+          <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 flex items-center justify-between text-zinc-600 dark:text-zinc-400 text-[11px]">
+            <div className="flex items-center gap-1.5 text-zinc-900 dark:text-zinc-100 font-bold">
+              <Terminal className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               自動下單即時日誌 (Live Activity Log)
             </div>
-            <span>最近 50 筆事件</span>
+            <span className="text-zinc-500">最近 50 筆事件</span>
           </div>
 
-          <div className="p-3 max-h-48 overflow-y-auto space-y-1 bg-zinc-950 text-[11px] text-zinc-400">
+          <div className="p-3 max-h-48 overflow-y-auto space-y-1 bg-zinc-50/50 dark:bg-zinc-950 text-[11px] text-zinc-700 dark:text-zinc-300">
             {logs.length === 0 ? (
-              <div className="text-zinc-600">全自動下單引擎就緒，等待信號觸發...</div>
+              <div className="text-zinc-400 dark:text-zinc-600">全自動下單引擎就緒，等待信號觸發...</div>
             ) : (
               logs.map((log, idx) => (
-                <div key={idx} className="leading-relaxed hover:text-zinc-200">
+                <div key={idx} className="leading-relaxed hover:text-zinc-950 dark:hover:text-zinc-100">
                   {log}
                 </div>
               ))
