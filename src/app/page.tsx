@@ -17,6 +17,7 @@ import {
   BacktestResult,
   PortfolioBacktestResult,
   MTFSnapshot,
+  SUPPORTED_SYMBOLS,
 } from '@/lib/engine/types';
 import { OptStrategyService } from '@/lib/services/optStrategyService';
 import { MultiTimeframeAggregator } from '@/lib/engine/mtf';
@@ -224,16 +225,16 @@ export default function StudioPage() {
     if (symbol === 'ALL' && timeframe === 'ALL') {
       return {
         title: '全幣種多策略宏觀量化組合 (All-Symbols Portfolio)',
-        subtitle: 'BTC-USDT、ETH-USDT、SOL-USDT 跨市場 12 組策略於同一 10,000 USDT 資金池協同運作',
-        badge: '12 組策略協同執行',
+        subtitle: `全市場 ${SUPPORTED_SYMBOLS.length} 大主流標的共 ${SUPPORTED_SYMBOLS.length * 4} 組策略於同一 10,000 USDT 資金池協同運作`,
+        badge: `${SUPPORTED_SYMBOLS.length * 4} 組策略協同執行`,
         badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
       };
     }
     if (symbol === 'ALL') {
       return {
         title: `全幣種 • ${timeframe.toUpperCase()} 跨市場動能組合`,
-        subtitle: `BTC-USDT、ETH-USDT、SOL-USDT 於 ${timeframe.toUpperCase()} 週期同步執行`,
-        badge: '3 大標的協同執行',
+        subtitle: `${SUPPORTED_SYMBOLS.length} 大主流標的於 ${timeframe.toUpperCase()} 週期同步執行`,
+        badge: `${SUPPORTED_SYMBOLS.length} 大標的協同執行`,
         badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
       };
     }
@@ -288,14 +289,14 @@ export default function StudioPage() {
             {/* Segmented Switcher Controls */}
             <div className="flex items-center gap-2.5 flex-wrap">
               {/* Asset Segmented Control */}
-              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono">
-                <span className="text-[11px] text-zinc-400 dark:text-zinc-500 px-1.5 font-medium flex items-center gap-1">
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono overflow-x-auto max-w-full">
+                <span className="text-[11px] text-zinc-400 dark:text-zinc-500 px-1.5 font-medium flex items-center gap-1 shrink-0">
                   <Coins className="w-3 h-3 text-emerald-500" />
                   標的
                 </span>
                 <button
                   onClick={() => handleSymbolChange('ALL')}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold shrink-0 transition-all ${
                     symbol === 'ALL'
                       ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-xs border border-zinc-200/80 dark:border-zinc-700/80'
                       : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
@@ -303,11 +304,11 @@ export default function StudioPage() {
                 >
                   全幣種
                 </button>
-                {(['BTC-USDT', 'ETH-USDT', 'SOL-USDT'] as const).map((s) => (
+                {SUPPORTED_SYMBOLS.map((s) => (
                   <button
                     key={s}
                     onClick={() => handleSymbolChange(s)}
-                    className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                    className={`px-2 py-1 rounded-md text-xs font-semibold shrink-0 transition-all ${
                       symbol === s
                         ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-xs border border-zinc-200/80 dark:border-zinc-700/80'
                         : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'

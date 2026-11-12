@@ -38,10 +38,40 @@ export function PortfolioSummaryCard({
       dot: 'bg-indigo-500',
       bar: 'bg-indigo-500',
     };
-    return {
+    if (sym.startsWith('SOL')) return {
       badge: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
       dot: 'bg-purple-500',
       bar: 'bg-purple-500',
+    };
+    if (sym.startsWith('BNB')) return {
+      badge: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20',
+      dot: 'bg-yellow-500',
+      bar: 'bg-yellow-500',
+    };
+    if (sym.startsWith('XRP')) return {
+      badge: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+      dot: 'bg-cyan-500',
+      bar: 'bg-cyan-500',
+    };
+    if (sym.startsWith('ADA')) return {
+      badge: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20',
+      dot: 'bg-teal-500',
+      bar: 'bg-teal-500',
+    };
+    if (sym.startsWith('LINK')) return {
+      badge: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20',
+      dot: 'bg-sky-500',
+      bar: 'bg-sky-500',
+    };
+    if (sym.startsWith('XLM')) return {
+      badge: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+      dot: 'bg-blue-500',
+      bar: 'bg-blue-500',
+    };
+    return {
+      badge: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20',
+      dot: 'bg-fuchsia-500',
+      bar: 'bg-fuchsia-500',
     };
   };
 
@@ -101,10 +131,10 @@ export function PortfolioSummaryCard({
               <Coins className="w-3.5 h-3.5 text-emerald-500" />
               各幣種資金配置與獲利貢獻 (Asset Allocation Breakdown)
             </span>
-            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">3 大流動性合約標的</span>
+            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">共 {symbolContributions.length} 大主流合約標的</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {symbolContributions.map((sc) => {
               const colors = getSymbolColor(sc.symbol);
               const isProfit = sc.netProfitAmount >= 0;

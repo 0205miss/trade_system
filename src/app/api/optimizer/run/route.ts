@@ -5,7 +5,7 @@ import { StrategyOptimizer } from '@/lib/engine/optimizer';
 import { PortfolioEngine } from '@/lib/engine/portfolioEngine';
 import { OptStrategyService } from '@/lib/services/optStrategyService';
 import { OptBacktestService } from '@/lib/services/optBacktestService';
-import { StrategyModel, Timeframe, Candle } from '@/lib/engine/types';
+import { StrategyModel, Timeframe, Candle, SUPPORTED_SYMBOLS } from '@/lib/engine/types';
 import { TimeframeCandleMap } from '@/lib/engine/mtf';
 
 export async function POST(req: NextRequest) {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Handle All-Symbols Portfolio Mode or All-Timeframes Portfolio Mode
     if (symbol === 'ALL' || timeframe === 'ALL' || body.mode === 'PORTFOLIO') {
-      const symbolsToRun = symbol === 'ALL' ? ['BTC-USDT', 'ETH-USDT', 'SOL-USDT'] : [symbol];
+      const symbolsToRun = symbol === 'ALL' ? [...SUPPORTED_SYMBOLS] : [symbol];
       const timeframesToRun: Timeframe[] =
         timeframe === 'ALL' ? ['4h', '1h', '15m', '5m'] : [timeframe as Timeframe];
 

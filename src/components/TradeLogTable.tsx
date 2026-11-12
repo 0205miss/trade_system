@@ -28,7 +28,13 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
     const base = sym.replace('-USDT', '');
     if (base === 'BTC') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
     if (base === 'ETH') return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20';
-    return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+    if (base === 'SOL') return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+    if (base === 'BNB') return 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20';
+    if (base === 'XRP') return 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20';
+    if (base === 'ADA') return 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20';
+    if (base === 'LINK') return 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20';
+    if (base === 'XLM') return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+    return 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20';
   };
 
   return (

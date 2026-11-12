@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { VSTTrader, VSTScanReport } from '@/lib/execution/vstTrader';
-import { Timeframe } from '@/lib/engine/types';
+import { Timeframe, SUPPORTED_SYMBOLS } from '@/lib/engine/types';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
-    const symbols = ['BTC-USDT', 'ETH-USDT', 'SOL-USDT'];
+    const symbols = [...SUPPORTED_SYMBOLS];
     const timeframes: Timeframe[] = ['5m', '15m', '1h', '4h'];
     const reports: VSTScanReport[] = [];
 

@@ -1,5 +1,19 @@
 export type Timeframe = '4h' | '1h' | '15m' | '5m';
 
+export const SUPPORTED_SYMBOLS = [
+  'BTC-USDT',
+  'ETH-USDT',
+  'SOL-USDT',
+  'BNB-USDT',
+  'XRP-USDT',
+  'ADA-USDT',
+  'LINK-USDT',
+  'XLM-USDT',
+  'HYPE-USDT',
+] as const;
+
+export type SupportedSymbol = (typeof SUPPORTED_SYMBOLS)[number];
+
 export interface Candle {
   time: number; // Unix timestamp in ms
   open: number;

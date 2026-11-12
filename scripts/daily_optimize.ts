@@ -5,7 +5,7 @@ import { BacktestEngine } from '../src/lib/engine/backtester';
 import { OptStrategyService } from '../src/lib/services/optStrategyService';
 import { OptBacktestService } from '../src/lib/services/optBacktestService';
 import { OptReportService } from '../src/lib/services/optReportService';
-import { Timeframe, StrategyModel, Candle } from '../src/lib/engine/types';
+import { Timeframe, StrategyModel, Candle, SUPPORTED_SYMBOLS } from '../src/lib/engine/types';
 
 async function runDailyOptimization() {
   console.log('===============================================================');
@@ -13,7 +13,7 @@ async function runDailyOptimization() {
   console.log(`📅 Date: ${new Date().toISOString().slice(0, 10)} (Asia/Taipei)`);
   console.log('===============================================================\n');
 
-  const symbols = ['BTC-USDT', 'ETH-USDT', 'SOL-USDT'];
+  const symbols = [...SUPPORTED_SYMBOLS];
   const timeframes: Timeframe[] = ['4h', '1h', '15m', '5m'];
 
   const dateStr = new Date().toISOString().slice(0, 10);

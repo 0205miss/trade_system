@@ -1,5 +1,5 @@
 import { VSTTrader } from '../src/lib/execution/vstTrader';
-import { Timeframe } from '../src/lib/engine/types';
+import { Timeframe, SUPPORTED_SYMBOLS } from '../src/lib/engine/types';
 
 async function startAutoTraderDaemon() {
   console.log('===============================================================');
@@ -7,7 +7,7 @@ async function startAutoTraderDaemon() {
   console.log(`⏱️  Scan Interval: 30 seconds | Leverage: 20x | Risk: 1.5%`);
   console.log('===============================================================\n');
 
-  const symbols = ['BTC-USDT', 'ETH-USDT', 'SOL-USDT'];
+  const symbols = [...SUPPORTED_SYMBOLS];
   const timeframes: Timeframe[] = ['5m', '15m', '1h', '4h'];
 
   let scanCount = 0;
