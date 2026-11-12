@@ -1,3 +1,7 @@
+try {
+  process.loadEnvFile('.env.local');
+} catch {}
+
 import { BingXClient } from '../src/lib/bingx/client';
 import { CandleCacheManager } from '../src/lib/bingx/cache';
 import { StrategyOptimizer } from '../src/lib/engine/optimizer';
@@ -13,8 +17,26 @@ async function runDailyOptimization() {
   console.log(`📅 Date: ${new Date().toISOString().slice(0, 10)} (Asia/Taipei)`);
   console.log('===============================================================\n');
 
-  const symbols = [...SUPPORTED_SYMBOLS];
-  const timeframes: Timeframe[] = ['4h', '1h', '15m', '5m'];
+  let symbols: string[] = [...SUPPORTED_SYMBOLS];
+  let timeframes: Timeframe[] = ['4h', '1h', '15m', '5m'];
+
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--symbols' && args[i + 1]) {
+      symbols = args[i + 1].split(',').map((s) => s.trim());
+      i++;
+    } else if (args[i].startsWith('--symbols=')) {
+      symbols = args[i].split('=')[1].split(',').map((s) => s.trim());
+    } else if (args[i] === '--timeframes' && args[i + 1]) {
+      timeframes = args[i + 1].split(',').map((s) => s.trim() as Timeframe);
+      i++;
+    } else if (args[i].startsWith('--timeframes=')) {
+      timeframes = args[i].split('=')[1].split(',').map((s) => s.trim() as Timeframe);
+    }
+  }
+
+  console.log(`🎯 Target Symbols: ${symbols.join(', ')}`);
+  console.log(`⏱️ Target Timeframes: ${timeframes.join(', ')}\n`);
 
   const dateStr = new Date().toISOString().slice(0, 10);
 

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { AuthProvider } from '@/components/AuthProvider';
 import { PwaRegister } from '@/components/PwaRegister';
 
 export const metadata: Metadata = {
@@ -55,8 +56,10 @@ export default function RootLayout({
       </head>
       <body className="bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100 antialiased selection:bg-emerald-500/20 selection:text-emerald-500 transition-colors duration-150">
         <ThemeProvider>
-          {children}
-          <PwaRegister />
+          <AuthProvider>
+            {children}
+            <PwaRegister />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -14,6 +14,7 @@
     "test:bingx": "node --use-system-ca ./node_modules/tsx/dist/cli.mjs test/bingx.test.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.49.1",
     "clsx": "^2.1.1",
     "lightweight-charts": "^4.2.3",

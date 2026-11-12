@@ -21,9 +21,12 @@ import {
 } from '@/lib/engine/types';
 import { OptStrategyService } from '@/lib/services/optStrategyService';
 import { MultiTimeframeAggregator } from '@/lib/engine/mtf';
-import { RefreshCw, AlertCircle, Coins, Layers, Activity } from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { RefreshCw, AlertCircle, Coins, Layers, Activity, Lock, LogIn } from 'lucide-react';
+import Link from 'next/link';
 
 export default function StudioPage() {
+  const { user } = useAuth();
   const [symbol, setSymbol] = useState<string>('BTC-USDT');
   const [timeframe, setTimeframe] = useState<Timeframe | 'ALL'>('ALL');
   const [candles, setCandles] = useState<Candle[]>([]);
@@ -397,18 +400,46 @@ export default function StudioPage() {
 
         {!isPortfolioMode && (
           <>
-            {/* 3.1 Single Strategy Parameter Controls Panel */}
-            <StrategyControls
-              strategy={strategy}
-              onChange={setStrategy}
-              onRunBacktest={handleRunBacktest}
-              onRunOptimization={handleRunOptimization}
-              isLoading={isLoading}
-              isOptimizing={isOptimizing}
-            />
-
-            {/* 3.2 Detailed Strategy & Indicators Suite Architecture */}
-            <StrategyDetailCard strategy={strategy} expandedDefault={true} />
+            {/* 3.1 & 3.2 Strategy Controls & Detailed Indicators (Protected for authenticated users) */}
+            {user ? (
+              <>
+                <StrategyControls
+                  strategy={strategy}
+                  onChange={setStrategy}
+                  onRunBacktest={handleRunBacktest}
+                  onRunOptimization={handleRunOptimization}
+                  isLoading={isLoading}
+                  isOptimizing={isOptimizing}
+                />
+                <StrategyDetailCard strategy={strategy} expandedDefault={true} />
+              </>
+            ) : (
+              <div className="p-4 sm:p-5 rounded-xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 backdrop-blur shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      策略詳細指標參數與調校系統已受保護
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 font-mono">
+                        需登入管理員權限
+                      </span>
+                    </h3>
+                    <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+                      包含 Supertrend 雙乘數、MACD 動能震盪閥值、VWAP 標準差軌道、StochRSI 極速指標權重與動態分批建倉公式。
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href="/login"
+                  className="shrink-0 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm transition-all"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>登入解鎖詳細內容</span>
+                </Link>
+              </div>
+            )}
 
             {/* 3.3 Single Strategy Financial Performance Metrics */}
             <MetricsCards result={backtestResult} isLoading={isLoading} />
