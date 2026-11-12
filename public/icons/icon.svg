@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#09090b"/>
+      <stop offset="100%" stop-color="#18181b"/>
+    </linearGradient>
+    <linearGradient id="brandGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0.8"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#10b981" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="508" height="508" x="2" y="2" rx="110" fill="none" stroke="#27272a" stroke-width="4"/>
+
+  <!-- Candlesticks & Charts -->
+  <g filter="url(#shadow)">
+    <!-- Candle 1: Bullish -->
+    <line x1="120" y1="210" x2="120" y2="390" stroke="#10b981" stroke-width="6" stroke-linecap="round"/>
+    <rect x="102" y="260" width="36" height="90" rx="8" fill="url(#brandGrad)"/>
+
+    <!-- Candle 2: Minor Pullback -->
+    <line x1="200" y1="180" x2="200" y2="340" stroke="#f43f5e" stroke-width="6" stroke-linecap="round"/>
+    <rect x="182" y="210" width="36" height="70" rx="8" fill="#f43f5e"/>
+
+    <!-- Candle 3: Strong Breakout -->
+    <line x1="280" y1="130" x2="280" y2="320" stroke="#10b981" stroke-width="6" stroke-linecap="round"/>
+    <rect x="262" y="160" width="36" height="120" rx="8" fill="url(#brandGrad)"/>
+
+    <!-- Candle 4: ATH Momentum -->
+    <line x1="360" y1="80" x2="360" y2="280" stroke="#10b981" stroke-width="6" stroke-linecap="round"/>
+    <rect x="342" y="110" width="36" height="130" rx="8" fill="url(#brandGrad)"/>
+
+    <!-- Dynamic Trend Confluence Line -->
+    <path d="M 90 350 Q 180 290, 260 210 T 430 90" fill="none" stroke="url(#glowGrad)" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="430" cy="90" r="12" fill="#38bdf8"/>
+    <circle cx="430" cy="90" r="20" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.6"/>
+  </g>
+
+  <!-- Quant Text Badge -->
+  <text x="256" y="445" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, monospace" font-size="34" font-weight="900" fill="#fafafa" text-anchor="middle" letter-spacing="4">QUANT ENGINE</text>
+</svg>

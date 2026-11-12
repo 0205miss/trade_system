@@ -1,0 +1,36 @@
+{
+  "name": "crypto-strategy-optimizer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --use-system-ca ./node_modules/next/dist/bin/next dev -p 3002",
+    "build": "node --use-system-ca ./node_modules/next/dist/bin/next build",
+    "start": "node --use-system-ca ./node_modules/next/dist/bin/next start -p 3002",
+    "lint": "next lint",
+    "optimize": "node --use-system-ca ./node_modules/tsx/dist/cli.mjs scripts/daily_optimize.ts",
+    "trader:daemon": "node --use-system-ca ./node_modules/tsx/dist/cli.mjs scripts/auto_trader_daemon.ts",
+    "test:indicators": "node --use-system-ca ./node_modules/tsx/dist/cli.mjs test/indicators.test.ts",
+    "test:backtest": "node --use-system-ca ./node_modules/tsx/dist/cli.mjs test/backtest.test.ts",
+    "test:bingx": "node --use-system-ca ./node_modules/tsx/dist/cli.mjs test/bingx.test.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "clsx": "^2.1.1",
+    "lightweight-charts": "^4.2.3",
+    "lucide-react": "^1.16.0",
+    "next": "^15.1.7",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
