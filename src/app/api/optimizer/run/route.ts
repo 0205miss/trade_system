@@ -15,33 +15,49 @@ export async function POST(req: NextRequest) {
     const timeframe = body.timeframe || '1h';
     const isOptimize = body.optimize === true;
 
-    // 1. Handle Portfolio Mode (All Strategies Concurrently Executed)
-    if (timeframe === 'ALL' || body.mode === 'PORTFOLIO') {
-      const timeframes: Timeframe[] = ['4h', '1h', '15m', '5m'];
-      const candlesMap: Record<Timeframe, Candle[]> = {} as any;
+    // 1. Handle All-Symbols Portfolio Mode or All-Timeframes Portfolio Mode
+    if (symbol === 'ALL' || timeframe === 'ALL' || body.mode === 'PORTFOLIO') {
+      const symbolsToRun = symbol === 'ALL' ? ['BTC-USDT', 'ETH-USDT', 'SOL-USDT'] : [symbol];
+      const timeframesToRun: Timeframe[] =
+        timeframe === 'ALL' ? ['4h', '1h', '15m', '5m'] : [timeframe as Timeframe];
 
-      // Consistently fetch 600 candles for each timeframe
+      const candlesBySymbolAndTf: Record<string, Record<Timeframe, Candle[]>> = {};
+      const htfBySymbol: Record<string, TimeframeCandleMap> = {};
+
       await Promise.all(
-        timeframes.map(async (tf) => {
-          candlesMap[tf] = await CandleCacheManager.getCandles(symbol, tf, 600);
+        symbolsToRun.map(async (s) => {
+          candlesBySymbolAndTf[s] = {} as any;
+          const allNeededTfs = Array.from(new Set([...timeframesToRun, '4h' as Timeframe, '1h' as Timeframe]));
+          await Promise.all(
+            allNeededTfs.map(async (tf) => {
+              candlesBySymbolAndTf[s][tf] = await CandleCacheManager.getCandles(s, tf, 600);
+            })
+          );
+
+          htfBySymbol[s] = {
+            '4h': candlesBySymbolAndTf[s]['4h'],
+            '1h': candlesBySymbolAndTf[s]['1h'],
+          };
         })
       );
 
-      // Load active or baseline strategy models for each timeframe
-      const strategies: StrategyModel[] = await Promise.all(
-        timeframes.map(async (tf) => {
+      // Load active or baseline strategy models for each symbol and timeframe
+      const strategies: StrategyModel[] = [];
+      for (const s of symbolsToRun) {
+        for (const tf of timeframesToRun) {
           const dbStrats = await OptStrategyService.getStrategies(tf);
-          const active = dbStrats.find((s) => s.isActive && s.symbol === symbol);
-          return active || OptStrategyService.getDefaultBaseline(tf, symbol);
-        })
+          const active = dbStrats.find((st) => st.isActive && st.symbol === s);
+          strategies.push(active || OptStrategyService.getDefaultBaseline(tf, s));
+        }
+      }
+
+      const portfolioResult = PortfolioEngine.runMultiSymbol(
+        symbolsToRun,
+        strategies,
+        candlesBySymbolAndTf,
+        htfBySymbol,
+        10000
       );
-
-      const htfMap: TimeframeCandleMap = {
-        '4h': candlesMap['4h'],
-        '1h': candlesMap['1h'],
-      };
-
-      const portfolioResult = PortfolioEngine.run(symbol, strategies, candlesMap, htfMap, 10000);
 
       return NextResponse.json({
         success: true,

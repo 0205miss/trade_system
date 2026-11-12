@@ -20,7 +20,7 @@ import {
 } from '@/lib/engine/types';
 import { OptStrategyService } from '@/lib/services/optStrategyService';
 import { MultiTimeframeAggregator } from '@/lib/engine/mtf';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, Coins, Layers, Activity } from 'lucide-react';
 
 export default function StudioPage() {
   const [symbol, setSymbol] = useState<string>('BTC-USDT');
@@ -40,15 +40,19 @@ export default function StudioPage() {
   const portfolioResultRef = useRef<PortfolioBacktestResult | null>(null);
   portfolioResultRef.current = portfolioResult;
 
+  const isPortfolioMode = symbol === 'ALL' || timeframe === 'ALL';
+
   // Load candles & trigger initial backtest (single or portfolio)
   const loadDataAndBacktest = useCallback(async () => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
+      const isPortfolio = symbol === 'ALL' || timeframe === 'ALL';
+      const candleSym = symbol === 'ALL' ? 'BTC-USDT' : symbol;
       const candleTf = timeframe === 'ALL' ? '1h' : timeframe;
 
       // 1. Fetch candles from API for charting and MTF (consistently 600 bars)
-      const res = await fetch(`/api/candles?symbol=${symbol}&timeframe=${candleTf}&limit=600`);
+      const res = await fetch(`/api/candles?symbol=${candleSym}&timeframe=${candleTf}&limit=600`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
@@ -58,41 +62,56 @@ export default function StudioPage() {
       // 2. Compute MTF Snapshot
       if (candleList.length > 0) {
         const latestTime = candleList[candleList.length - 1].time;
-        const snapshot = MultiTimeframeAggregator.computeMTFSnapshot(symbol, latestTime, {
+        const snapshot = MultiTimeframeAggregator.computeMTFSnapshot(candleSym, latestTime, {
           [candleTf]: candleList,
         });
         setMtfSnapshot(snapshot);
       }
 
       // 3. Run backtest (Portfolio or Single)
-      // Guard against state bleed: only send strategy if its timeframe matches current timeframe
-      const isMismatched = strategy.timeframe !== timeframe;
-      const configToSend = timeframe === 'ALL' || isMismatched ? undefined : strategy;
+      if (isPortfolio) {
+        const btRes = await fetch('/api/optimizer/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol,
+            timeframe,
+            optimize: false,
+          }),
+        });
+        const btData = await btRes.json();
+        if (!btData.success) throw new Error(btData.error);
 
-      const btRes = await fetch('/api/optimizer/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbol,
-          timeframe,
-          strategyConfig: configToSend,
-          optimize: false,
-        }),
-      });
-      const btData = await btRes.json();
-      if (!btData.success) throw new Error(btData.error);
-
-      if (timeframe === 'ALL') {
         setPortfolioResult(btData.result);
         setBacktestResult(null);
       } else {
-        const cachedPortResult = portfolioResultRef.current?.individualResults[timeframe];
+        const cacheKey = `${symbol}_${timeframe}`;
+        const cachedPortResult =
+          portfolioResultRef.current?.individualResults[cacheKey] ||
+          portfolioResultRef.current?.individualResults[timeframe];
+
+        const isMismatched = strategy.timeframe !== timeframe || strategy.symbol !== symbol;
+        const configToSend = isMismatched ? undefined : strategy;
+
         if (cachedPortResult && !configToSend) {
           setBacktestResult(cachedPortResult);
           if (cachedPortResult.configSnapshot) {
             setStrategy(cachedPortResult.configSnapshot);
           }
         } else {
+          const btRes = await fetch('/api/optimizer/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              symbol,
+              timeframe,
+              strategyConfig: configToSend,
+              optimize: false,
+            }),
+          });
+          const btData = await btRes.json();
+          if (!btData.success) throw new Error(btData.error);
+
           setBacktestResult(btData.result);
           if (btData.result?.configSnapshot) {
             setStrategy(btData.result.configSnapshot);
@@ -111,20 +130,34 @@ export default function StudioPage() {
   }, [symbol, timeframe]);
 
   // Unified timeframe switch handler ensuring zero state bleed and 100% data consistency
-  const handleTimeframeChange = (tf: Timeframe | 'ALL') => {
-    if (tf !== 'ALL' && portfolioResultRef.current?.individualResults[tf]) {
-      const exactSingleResult = portfolioResultRef.current.individualResults[tf];
-      setBacktestResult(exactSingleResult);
-      if (exactSingleResult.configSnapshot) {
-        setStrategy(exactSingleResult.configSnapshot);
+  const handleTimeframeChange = (tf: Timeframe | 'ALL', targetSym?: string) => {
+    if (targetSym && targetSym !== symbol) {
+      setSymbol(targetSym);
+    }
+    const currentSym = targetSym || symbol;
+    if (currentSym !== 'ALL' && tf !== 'ALL') {
+      const cacheKey = `${currentSym}_${tf}`;
+      const exactSingleResult =
+        portfolioResultRef.current?.individualResults[cacheKey] ||
+        portfolioResultRef.current?.individualResults[tf];
+
+      if (exactSingleResult) {
+        setBacktestResult(exactSingleResult);
+        if (exactSingleResult.configSnapshot) {
+          setStrategy(exactSingleResult.configSnapshot);
+        }
       }
     }
     setTimeframe(tf);
   };
 
+  const handleSymbolChange = (newSym: string) => {
+    setSymbol(newSym);
+  };
+
   // Manual Trigger: Re-run Backtest for single strategy
   const handleRunBacktest = async () => {
-    if (timeframe === 'ALL') return;
+    if (isPortfolioMode) return;
     setIsLoading(true);
     setErrorMsg(null);
     try {
@@ -153,7 +186,7 @@ export default function StudioPage() {
 
   // Manual Trigger: Run GA Optimization for single strategy
   const handleRunOptimization = async () => {
-    if (timeframe === 'ALL') return;
+    if (isPortfolioMode) return;
     setIsOptimizing(true);
     setErrorMsg(null);
     try {
@@ -182,19 +215,49 @@ export default function StudioPage() {
 
   const latestPrice = candles.length > 0 ? candles[candles.length - 1].close : undefined;
 
-  const activeResult = timeframe === 'ALL' ? portfolioResult : backtestResult;
+  const activeResult = isPortfolioMode ? portfolioResult : backtestResult;
   const activeEquityCurve = activeResult?.equityCurve || [];
   const activeTrades = activeResult?.trades || [];
 
+  // Determine contextual badge & title
+  const getContextualInfo = () => {
+    if (symbol === 'ALL' && timeframe === 'ALL') {
+      return {
+        title: '全幣種多策略宏觀量化組合 (All-Symbols Portfolio)',
+        subtitle: 'BTC-USDT、ETH-USDT、SOL-USDT 跨市場 12 組策略於同一 10,000 USDT 資金池協同運作',
+        badge: '12 組策略協同執行',
+        badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      };
+    }
+    if (symbol === 'ALL') {
+      return {
+        title: `全幣種 • ${timeframe.toUpperCase()} 跨市場動能組合`,
+        subtitle: `BTC-USDT、ETH-USDT、SOL-USDT 於 ${timeframe.toUpperCase()} 週期同步執行`,
+        badge: '3 大標的協同執行',
+        badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      };
+    }
+    if (timeframe === 'ALL') {
+      return {
+        title: `${symbol} 全週期投資組合 (Multi-Timeframe Portfolio)`,
+        subtitle: '4H 宏觀、1H 波段、15M 日內、5M 極速 4 組策略同步執行',
+        badge: '4 組策略協同執行',
+        badgeColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      };
+    }
+    return {
+      title: `${symbol} • ${timeframe.toUpperCase()} 單一策略獨立回測與參數演化`,
+      subtitle: `檢視與微調 ${symbol} 之 ${timeframe.toUpperCase()} 策略指標參數、進出場判定與個別權益曲線`,
+      badge: '單一級別獨立運算',
+      badgeColor: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30',
+    };
+  };
+
+  const contextInfo = getContextualInfo();
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col font-sans transition-colors">
-      <Navbar
-        symbol={symbol}
-        onSymbolChange={setSymbol}
-        timeframe={timeframe}
-        onTimeframeChange={handleTimeframeChange}
-        price={latestPrice}
-      />
+      <Navbar price={latestPrice} symbol={symbol} />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-4">
         {errorMsg && (
@@ -204,84 +267,126 @@ export default function StudioPage() {
           </div>
         )}
 
-        {/* Mode Navigation & Switcher Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-3.5">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                {timeframe === 'ALL'
-                  ? `${symbol} 所有策略綜合執行投資組合 (Multi-Strategy Portfolio)`
-                  : `${symbol} &bull; ${timeframe.toUpperCase()} 單一策略獨立回測與參數演化`}
-              </h1>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                  timeframe === 'ALL'
-                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                    : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30'
-                }`}
-              >
-                {timeframe === 'ALL' ? '4 組策略協同執行' : '單一級別獨立運算'}
-              </span>
+        {/* 1. Unified Institutional Studio Control Bar */}
+        <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/90 rounded-xl p-4 shadow-sm transition-colors space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Header Titles */}
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                  {contextInfo.title}
+                </h1>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${contextInfo.badgeColor}`}>
+                  {contextInfo.badge}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 font-sans mt-0.5">
+                {contextInfo.subtitle}
+              </p>
             </div>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400 font-mono mt-0.5">
-              {timeframe === 'ALL'
-                ? '直接檢視 4H 宏觀趨勢、1H 波段動能、15M 日內循環、5M 微觀極速 4 組策略同時於同一資金池執行之綜合報酬率與最大回撤'
-                : `檢視與微調 ${symbol} 之 ${timeframe.toUpperCase()} 獨立策略指標參數、進出場判定條件與個別權益曲線`}
-            </p>
-          </div>
 
-          {/* Quick Mode Toggle */}
-          <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-900 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono">
-            <button
-              onClick={() => handleTimeframeChange('ALL')}
-              className={`px-3 py-1 rounded transition-colors ${
-                timeframe === 'ALL'
-                  ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-              }`}
-            >
-              🌐 全策略綜合回測
-            </button>
-            <div className="w-[1px] h-4 bg-zinc-300 dark:bg-zinc-700" />
-            {(['4h', '1h', '15m', '5m'] as Timeframe[]).map((tf) => (
+            {/* Segmented Switcher Controls */}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Asset Segmented Control */}
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono">
+                <span className="text-[11px] text-zinc-400 dark:text-zinc-500 px-1.5 font-medium flex items-center gap-1">
+                  <Coins className="w-3 h-3 text-emerald-500" />
+                  標的
+                </span>
+                <button
+                  onClick={() => handleSymbolChange('ALL')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    symbol === 'ALL'
+                      ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-xs border border-zinc-200/80 dark:border-zinc-700/80'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  全幣種
+                </button>
+                {(['BTC-USDT', 'ETH-USDT', 'SOL-USDT'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => handleSymbolChange(s)}
+                    className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                      symbol === s
+                        ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-xs border border-zinc-200/80 dark:border-zinc-700/80'
+                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    {s.replace('-USDT', '')}
+                  </button>
+                ))}
+              </div>
+
+              {/* Timeframe Segmented Control */}
+              <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 text-xs font-mono">
+                <span className="text-[11px] text-zinc-400 dark:text-zinc-500 px-1.5 font-medium flex items-center gap-1">
+                  <Layers className="w-3 h-3 text-emerald-500" />
+                  週期
+                </span>
+                <button
+                  onClick={() => handleTimeframeChange('ALL')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    timeframe === 'ALL'
+                      ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-xs border border-zinc-200/80 dark:border-zinc-700/80'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                  }`}
+                >
+                  全週期
+                </button>
+                {(['4h', '1h', '15m', '5m'] as Timeframe[]).map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => handleTimeframeChange(tf)}
+                    className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                      timeframe === tf
+                        ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 shadow-xs border border-zinc-200/80 dark:border-zinc-700/80'
+                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+                    }`}
+                  >
+                    {tf.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
+              {/* Refresh Button */}
               <button
-                key={tf}
-                onClick={() => handleTimeframeChange(tf)}
-                className={`px-2.5 py-1 rounded transition-colors ${
-                  timeframe === tf
-                    ? 'bg-white dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-                }`}
+                onClick={loadDataAndBacktest}
+                disabled={isLoading}
+                title="重新執行回測計算"
+                className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors shadow-xs"
               >
-                {tf.toUpperCase()}
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
               </button>
-            ))}
+            </div>
           </div>
         </div>
 
-        {/* 1. MTF Matrix & Confluence Bar */}
+        {/* 2. MTF Matrix & Confluence Bar */}
         <MTFMatrix snapshot={mtfSnapshot} />
 
-        {/* 2. MODE SPECIFIC VIEWS */}
-        {timeframe === 'ALL' && !portfolioResult && isLoading && (
-          <div className="flex flex-col items-center justify-center p-12 border border-zinc-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-900/50">
+        {/* 3. MODE SPECIFIC VIEWS */}
+        {isPortfolioMode && !portfolioResult && isLoading && (
+          <div className="flex flex-col items-center justify-center p-12 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900/50">
             <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mb-3" />
-            <p className="text-sm font-mono text-zinc-600 dark:text-zinc-400">正在執行全策略 (4H, 1H, 15M, 5M) 綜合回測與資金組合運算中...</p>
+            <p className="text-sm font-mono text-zinc-600 dark:text-zinc-400">
+              正在執行{symbol === 'ALL' ? '全幣種 (BTC + ETH + SOL)' : symbol} 跨市場綜合回測與資金組合運算中...
+            </p>
           </div>
         )}
 
-        {timeframe === 'ALL' && portfolioResult && (
+        {isPortfolioMode && portfolioResult && (
           <>
-            {/* 2.1 Portfolio Summary Dashboard Card */}
+            {/* 3.1 Portfolio Summary Dashboard Card (with Asset Allocation & Individual Contributions) */}
             <PortfolioSummaryCard
               portfolioResult={portfolioResult}
               onSelectTimeframe={handleTimeframeChange}
             />
 
-            {/* 2.2 Combined Core Performance Metrics */}
+            {/* 3.2 Combined Core Performance Metrics */}
             <MetricsCards result={portfolioResult} isLoading={isLoading} />
 
-            {/* 2.3 Combined Portfolio Equity Curve vs Buy & Hold */}
+            {/* 3.3 Combined Portfolio Equity Curve vs Buy & Hold */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <EquityChart equityCurve={activeEquityCurve} height={280} />
               <TradeLogTable trades={activeTrades} />
@@ -289,9 +394,9 @@ export default function StudioPage() {
           </>
         )}
 
-        {timeframe !== 'ALL' && (
+        {!isPortfolioMode && (
           <>
-            {/* 2.1 Single Strategy Parameter Controls Panel */}
+            {/* 3.1 Single Strategy Parameter Controls Panel */}
             <StrategyControls
               strategy={strategy}
               onChange={setStrategy}
@@ -301,13 +406,13 @@ export default function StudioPage() {
               isOptimizing={isOptimizing}
             />
 
-            {/* 2.2 Detailed Strategy & Indicators Suite Architecture */}
+            {/* 3.2 Detailed Strategy & Indicators Suite Architecture */}
             <StrategyDetailCard strategy={strategy} expandedDefault={true} />
 
-            {/* 2.3 Single Strategy Financial Performance Metrics */}
+            {/* 3.3 Single Strategy Financial Performance Metrics */}
             <MetricsCards result={backtestResult} isLoading={isLoading} />
 
-            {/* 2.4 Candlestick Chart with Trade Markers */}
+            {/* 3.4 Candlestick Chart with Trade Markers */}
             <div className="space-y-4">
               <TradingViewChart
                 candles={candles}
@@ -317,7 +422,7 @@ export default function StudioPage() {
               />
             </div>
 
-            {/* 2.5 Single Strategy Equity Curve & Trade Logs */}
+            {/* 3.5 Single Strategy Equity Curve & Trade Logs */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {backtestResult && <EquityChart equityCurve={backtestResult.equityCurve} height={260} />}
               <TradeLogTable trades={backtestResult?.trades || []} />

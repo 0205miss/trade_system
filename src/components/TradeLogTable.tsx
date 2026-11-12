@@ -11,12 +11,25 @@ interface TradeLogTableProps {
 export function TradeLogTable({ trades }: TradeLogTableProps) {
   const [filterDirection, setFilterDirection] = useState<'ALL' | 'LONG' | 'SHORT'>('ALL');
   const [filterTf, setFilterTf] = useState<Timeframe | 'ALL'>('ALL');
+  const [filterSymbol, setFilterSymbol] = useState<string>('ALL');
+
+  const uniqueSymbols = Array.from(new Set(trades.map((t) => t.symbol).filter(Boolean))) as string[];
+  const hasMultipleSymbols = uniqueSymbols.length > 1;
 
   const filteredTrades = trades.filter((t) => {
     if (filterDirection !== 'ALL' && t.direction !== filterDirection) return false;
     if (filterTf !== 'ALL' && t.timeframe !== filterTf) return false;
+    if (filterSymbol !== 'ALL' && t.symbol !== filterSymbol) return false;
     return true;
   });
+
+  const getSymbolBadge = (sym?: string) => {
+    if (!sym) return null;
+    const base = sym.replace('-USDT', '');
+    if (base === 'BTC') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+    if (base === 'ETH') return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20';
+    return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+  };
 
   return (
     <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 rounded-lg overflow-hidden shadow-sm transition-colors">
@@ -29,6 +42,35 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Symbol Filter (if multi-symbol) */}
+          {hasMultipleSymbols && (
+            <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/60 p-0.5 rounded text-[11px] font-mono">
+              <button
+                onClick={() => setFilterSymbol('ALL')}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  filterSymbol === 'ALL'
+                    ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold shadow-xs'
+                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
+                }`}
+              >
+                全幣種
+              </button>
+              {uniqueSymbols.map((sym) => (
+                <button
+                  key={sym}
+                  onClick={() => setFilterSymbol(sym)}
+                  className={`px-1.5 py-0.5 rounded transition-colors ${
+                    filterSymbol === sym
+                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold shadow-xs'
+                      : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300'
+                  }`}
+                >
+                  {sym.replace('-USDT', '')}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Timeframe Filter */}
           <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/60 p-0.5 rounded text-[11px] font-mono">
             {['ALL', '4h', '1h', '15m', '5m'].map((tf) => (
@@ -67,7 +109,7 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
                   : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
               }`}
             >
-              僅做多
+              做多
             </button>
             <button
               onClick={() => setFilterDirection('SHORT')}
@@ -77,7 +119,7 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
                   : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'
               }`}
             >
-              僅做空
+              做空
             </button>
           </div>
         </div>
@@ -88,7 +130,7 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
           <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800 text-[11px]">
             <tr>
               <th className="py-2 px-3">時間 (Time)</th>
-              <th className="py-2 px-3">策略 / 方向</th>
+              <th className="py-2 px-3">標的 / 策略 / 方向</th>
               <th className="py-2 px-3 text-right">進場均價</th>
               <th className="py-2 px-3 text-right">出場均價</th>
               <th className="py-2 px-3 text-right">手續費</th>
@@ -116,6 +158,8 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
                     ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20'
                     : 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
 
+                const symBadge = getSymbolBadge(t.symbol);
+
                 return (
                   <tr key={t.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors">
                     <td className="py-2 px-3 text-zinc-600 dark:text-zinc-400 text-[11px]">
@@ -128,6 +172,11 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
                     </td>
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-1.5">
+                        {t.symbol && (
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${symBadge}`}>
+                            {t.symbol.replace('-USDT', '')}
+                          </span>
+                        )}
                         <span className={`text-[9px] font-bold px-1 py-0.2 rounded border ${tfBadgeColor}`}>
                           {t.timeframe.toUpperCase()}
                         </span>
@@ -138,32 +187,43 @@ export function TradeLogTable({ trades }: TradeLogTableProps) {
                               : 'text-rose-600 dark:text-rose-400 bg-rose-500/10'
                           }`}
                         >
-                          {t.direction === 'LONG' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                          {t.direction === 'LONG' ? (
+                            <ArrowUpRight className="w-3 h-3 text-emerald-500" />
+                          ) : (
+                            <ArrowDownRight className="w-3 h-3 text-rose-500" />
+                          )}
                           {t.direction}
                         </span>
                       </div>
                     </td>
-                    <td className="py-2 px-3 text-right font-medium">${t.entryPrice.toFixed(1)}</td>
-                    <td className="py-2 px-3 text-right font-medium">${t.exitPrice.toFixed(1)}</td>
-                    <td className="py-2 px-3 text-right text-zinc-500 dark:text-zinc-400">-${t.feePaid.toFixed(2)}</td>
+                    <td className="py-2 px-3 text-right text-zinc-700 dark:text-zinc-300 font-medium">
+                      ${t.entryPrice.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-2 px-3 text-right text-zinc-700 dark:text-zinc-300 font-medium">
+                      ${t.exitPrice.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-2 px-3 text-right text-zinc-500 text-[11px]">
+                      -${t.feePaid.toFixed(2)}
+                    </td>
                     <td className="py-2 px-3 text-center">
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${
-                          t.exitReason === 'TP1' || t.exitReason === 'TP2' || t.exitReason === 'TP3'
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-                            : t.exitReason === 'BE'
-                            ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30'
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
-                        }`}
-                      >
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-medium">
                         {t.exitReason}
                       </span>
                     </td>
-                    <td className={`py-2 px-3 text-right font-bold ${isWin ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    <td
+                      className={`py-2 px-3 text-right font-bold ${
+                        isWin ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
                       {isWin ? '+' : ''}${t.pnlAmount.toFixed(2)}
                     </td>
-                    <td className={`py-2 px-3 text-right font-bold ${isWin ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {isWin ? '+' : ''}{t.pnlPct.toFixed(1)}%
+                    <td
+                      className={`py-2 px-3 text-right font-bold ${
+                        isWin ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {isWin ? '+' : ''}
+                      {t.pnlPct.toFixed(1)}%
                     </td>
                   </tr>
                 );

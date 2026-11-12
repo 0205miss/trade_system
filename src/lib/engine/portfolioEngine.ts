@@ -7,19 +7,20 @@ import {
   Timeframe,
   PortfolioBacktestResult,
   StrategyContribution,
+  SymbolContribution,
 } from './types';
 import { BacktestEngine } from './backtester';
 import { TimeframeCandleMap } from './mtf';
 
 export class PortfolioEngine {
   /**
-   * Run multi-strategy concurrent backtest
+   * Run multi-symbol and/or multi-strategy concurrent backtest
    */
-  static run(
-    symbol: string,
+  static runMultiSymbol(
+    symbols: string[],
     strategies: StrategyModel[],
-    candlesByTimeframe: Record<Timeframe, Candle[]>,
-    htfCandlesMap?: TimeframeCandleMap,
+    candlesBySymbolAndTf: Record<string, Record<Timeframe, Candle[]>>,
+    htfCandlesBySymbol?: Record<string, TimeframeCandleMap>,
     initialCapital: number = 10000
   ): PortfolioBacktestResult {
     const individualResults: Record<string, BacktestResult> = {};
@@ -27,11 +28,18 @@ export class PortfolioEngine {
 
     // 1. Run backtest for each strategy
     for (const strat of strategies) {
-      const candles = candlesByTimeframe[strat.timeframe];
+      const symCandles = candlesBySymbolAndTf[strat.symbol];
+      const candles = symCandles ? symCandles[strat.timeframe] : undefined;
       if (!candles || candles.length < 50) continue;
 
-      const res = BacktestEngine.run(candles, strat, htfCandlesMap, false);
-      individualResults[strat.timeframe] = res;
+      const htfMap = htfCandlesBySymbol ? htfCandlesBySymbol[strat.symbol] : undefined;
+      const res = BacktestEngine.run(candles, strat, htfMap, false);
+      const key = `${strat.symbol}_${strat.timeframe}`;
+      individualResults[key] = res;
+      // Also index by timeframe for single-symbol backwards compatibility
+      if (symbols.length === 1) {
+        individualResults[strat.timeframe] = res;
+      }
 
       // Tag trades and collect
       for (const t of res.trades) {
@@ -47,13 +55,46 @@ export class PortfolioEngine {
     allTrades.sort((a, b) => a.entryTime - b.entryTime);
 
     // 3. Build unified portfolio equity curve
-    // Base timeline on 1h or 15m candles
+    // Base timeline on primary symbol's 1h/15m/4h/5m candles
+    const primarySym = symbols[0] || 'BTC-USDT';
+    const primaryCandlesMap = candlesBySymbolAndTf[primarySym] || {};
     const baseCandles =
-      candlesByTimeframe['1h'] ||
-      candlesByTimeframe['15m'] ||
-      candlesByTimeframe['4h'] ||
-      candlesByTimeframe['5m'] ||
+      primaryCandlesMap['1h'] ||
+      primaryCandlesMap['15m'] ||
+      primaryCandlesMap['4h'] ||
+      primaryCandlesMap['5m'] ||
       [];
+
+    // Fast price lookup across symbols at time t for mark-to-market
+    const symbolTimelineMap: Record<string, { times: number[]; closes: number[] }> = {};
+    for (const sym of symbols) {
+      const symMap = candlesBySymbolAndTf[sym];
+      if (symMap) {
+        const cList = symMap['1h'] || symMap['15m'] || symMap['4h'] || symMap['5m'] || [];
+        symbolTimelineMap[sym] = {
+          times: cList.map((c) => c.time),
+          closes: cList.map((c) => c.close),
+        };
+      }
+    }
+
+    const getSymbolPriceAtTime = (sym: string, time: number): number | null => {
+      const timeline = symbolTimelineMap[sym];
+      if (!timeline || timeline.times.length === 0) return null;
+      let low = 0;
+      let high = timeline.times.length - 1;
+      let idx = -1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (timeline.times[mid] <= time) {
+          idx = mid;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+      return idx >= 0 ? timeline.closes[idx] : timeline.closes[0];
+    };
 
     const equityCurve: EquityPoint[] = [];
     let peakEquity = initialCapital;
@@ -78,9 +119,10 @@ export class PortfolioEngine {
       for (const trade of allTrades) {
         if (trade.entryTime <= t && trade.exitTime > t) {
           const isLong = trade.direction === 'LONG';
+          const symPrice = getSymbolPriceAtTime(trade.symbol || primarySym, t) ?? trade.entryPrice;
           const pnl = isLong
-            ? (c.close - trade.entryPrice) * trade.quantity
-            : (trade.entryPrice - c.close) * trade.quantity;
+            ? (symPrice - trade.entryPrice) * trade.quantity
+            : (trade.entryPrice - symPrice) * trade.quantity;
           unrealizedPnL += pnl;
         }
       }
@@ -102,7 +144,6 @@ export class PortfolioEngine {
     }
 
     // 4. Portfolio Performance Metrics
-    // Calculate total net profit across all individual strategies
     const sumIndividualNetProfit = Object.values(individualResults).reduce(
       (sum, res) => sum + res.netProfitAmount,
       0
@@ -163,10 +204,52 @@ export class PortfolioEngine {
 
     const calmarRatio = maxDrawdownPct > 0 ? Math.round((netProfitPct / maxDrawdownPct) * 100) / 100 : 0;
 
-    // 5. Per-Strategy Contributions & Breakdown (Exact matching with individual results)
+    // 5. Per-Symbol Breakdown
+    const symbolContributions: SymbolContribution[] = symbols.map((sym) => {
+      const symStrats = strategies.filter((s) => s.symbol === sym);
+      const symTrades = allTrades.filter((t) => t.symbol === sym);
+      const symNetProfit = symStrats.reduce((sum, s) => {
+        const res = individualResults[`${s.symbol}_${s.timeframe}`] || individualResults[s.timeframe];
+        return sum + (res ? res.netProfitAmount : 0);
+      }, 0);
+      const symTradesCount = symStrats.reduce((sum, s) => {
+        const res = individualResults[`${s.symbol}_${s.timeframe}`] || individualResults[s.timeframe];
+        return sum + (res ? res.totalTrades : 0);
+      }, 0);
+      const symWins = symStrats.reduce((sum, s) => {
+        const res = individualResults[`${s.symbol}_${s.timeframe}`] || individualResults[s.timeframe];
+        return sum + (res ? res.winningTrades : 0);
+      }, 0);
+      const symWinRate = symTradesCount > 0 ? Math.round((symWins / symTradesCount) * 1000) / 10 : 0;
+      const symNetPct = Math.round(((symNetProfit / initialCapital) * 100) * 100) / 100;
+      const profitContrib = netProfitAmount > 0 ? Math.round((symNetProfit / netProfitAmount) * 1000) / 10 : 0;
+
+      const symMaxDd = symStrats.reduce((max, s) => {
+        const res = individualResults[`${s.symbol}_${s.timeframe}`] || individualResults[s.timeframe];
+        return Math.max(max, res ? res.maxDrawdownPct : 0);
+      }, 0);
+
+      const grossWin = symTrades.filter((t) => t.pnlAmount > 0).reduce((sum, t) => sum + t.pnlAmount, 0);
+      const grossLoss = Math.abs(symTrades.filter((t) => t.pnlAmount < 0).reduce((sum, t) => sum + t.pnlAmount, 0));
+      const symPf = grossLoss === 0 ? (grossWin > 0 ? 99 : 1) : Math.round((grossWin / grossLoss) * 100) / 100;
+
+      return {
+        symbol: sym,
+        tradesCount: symTradesCount,
+        winRate: symWinRate,
+        netProfitAmount: Math.round(symNetProfit * 100) / 100,
+        netProfitPct: symNetPct,
+        profitContributionPct: profitContrib,
+        maxDrawdownPct: symMaxDd,
+        profitFactor: symPf,
+      };
+    });
+
+    // 6. Per-Strategy Contributions & Breakdown
     const strategyContributions: StrategyContribution[] = strategies.map((strat) => {
-      const stratRes = individualResults[strat.timeframe];
-      const stratTrades = allTrades.filter((t) => t.timeframe === strat.timeframe);
+      const key = `${strat.symbol}_${strat.timeframe}`;
+      const stratRes = individualResults[key] || individualResults[strat.timeframe];
+      const stratTrades = allTrades.filter((t) => t.symbol === strat.symbol && t.timeframe === strat.timeframe);
 
       const netProfit = stratRes ? stratRes.netProfitAmount : 0;
       const netPct = stratRes ? stratRes.netProfitPct : 0;
@@ -194,10 +277,13 @@ export class PortfolioEngine {
       };
     });
 
+    const isAllSymbols = symbols.length > 1;
+
     return {
       runId: `portfolio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      symbol,
-      timeframes: strategies.map((s) => s.timeframe),
+      symbol: isAllSymbols ? 'ALL' : symbols[0],
+      symbols,
+      timeframes: Array.from(new Set(strategies.map((s) => s.timeframe))),
       startTime: baseCandles.length > 0 ? baseCandles[0].time : 0,
       endTime: baseCandles.length > 0 ? baseCandles[baseCandles.length - 1].time : 0,
       initialCapital,
@@ -218,7 +304,27 @@ export class PortfolioEngine {
       trades: allTrades,
       equityCurve,
       strategyContributions,
+      symbolContributions,
       individualResults,
     };
+  }
+
+  /**
+   * Run single-symbol multi-strategy backtest (legacy convenience wrapper)
+   */
+  static run(
+    symbol: string,
+    strategies: StrategyModel[],
+    candlesByTimeframe: Record<Timeframe, Candle[]>,
+    htfCandlesMap?: TimeframeCandleMap,
+    initialCapital: number = 10000
+  ): PortfolioBacktestResult {
+    return this.runMultiSymbol(
+      [symbol],
+      strategies,
+      { [symbol]: candlesByTimeframe },
+      htfCandlesMap ? { [symbol]: htfCandlesMap } : undefined,
+      initialCapital
+    );
   }
 }

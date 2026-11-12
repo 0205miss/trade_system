@@ -186,9 +186,21 @@ export interface StrategyContribution {
   sharpeRatio: number;
 }
 
+export interface SymbolContribution {
+  symbol: string;
+  tradesCount: number;
+  winRate: number;
+  netProfitAmount: number;
+  netProfitPct: number;
+  profitContributionPct: number;
+  maxDrawdownPct: number;
+  profitFactor: number;
+}
+
 export interface PortfolioBacktestResult {
   runId: string;
   symbol: string;
+  symbols?: string[];
   timeframes: Timeframe[];
   startTime: number;
   endTime: number;
@@ -210,5 +222,6 @@ export interface PortfolioBacktestResult {
   trades: TradeRecord[];
   equityCurve: EquityPoint[];
   strategyContributions: StrategyContribution[];
+  symbolContributions?: SymbolContribution[];
   individualResults: Record<string, BacktestResult>;
 }
