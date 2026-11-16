@@ -6,6 +6,10 @@ import { Timeframe } from '@/lib/engine/types';
 
 export async function GET(req: NextRequest) {
   try {
+    const url = new URL(req.url);
+    const diagSymbol = url.searchParams.get('symbol') || 'BTC-USDT';
+    const diagTf = (url.searchParams.get('timeframe') || '1h') as Timeframe;
+
     const balance = await BingXVSTClient.getBalance();
     const isConfigured = BingXVSTClient.isConfigured();
 
@@ -23,12 +27,28 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(30);
 
+    // Get current signal diagnosis
+    let diagnosis = null;
+    try {
+      diagnosis = await VSTTrader.scanAndExecute(diagSymbol, diagTf);
+    } catch (diagErr: any) {
+      diagnosis = {
+        symbol: diagSymbol,
+        timeframe: diagTf,
+        timestamp: Date.now(),
+        currentPrice: 0,
+        actionTaken: 'NO_SIGNAL',
+        detail: `診斷失敗: ${diagErr.message}`,
+      };
+    }
+
     return NextResponse.json({
       success: true,
       isConfigured,
       balance,
       positions: positions || [],
       orders: orders || [],
+      diagnosis,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

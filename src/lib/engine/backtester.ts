@@ -12,6 +12,7 @@ import { calculateRSI, calculateStochRSI } from './indicators/momentum';
 import { calculateATR, calculateBollingerBands } from './indicators/volatility';
 import { calculateVWAP, calculateRVOL } from './indicators/volume';
 import { MultiTimeframeAggregator, TimeframeCandleMap } from './mtf';
+import { SignalEvaluator } from './signalEvaluator';
 
 interface ActivePositionState {
   id: string;
@@ -245,52 +246,8 @@ export class BacktestEngine {
 
       // 2. Signal Generation & Entry Execution (if not in position and daily loss within limit)
       if (!activePosition && dailyLoss < maxDailyLossUsdt) {
-        // MTF Filter Check
-        let mtfAllowsLong = true;
-        let mtfAllowsShort = true;
-        let mtfSnapshot: any = null;
-
-        if (htfCandlesMap) {
-          mtfSnapshot = MultiTimeframeAggregator.computeMTFSnapshot(strategy.symbol, c.time, htfCandlesMap);
-          if (strategy.mtfReferenceConfig.useHigherTimeframeTrendFilter) {
-            if (strategy.timeframe === '5m' || strategy.timeframe === '15m') {
-              if (mtfSnapshot.tf4h?.trend === 'BEARISH') mtfAllowsLong = false;
-              if (mtfSnapshot.tf4h?.trend === 'BULLISH') mtfAllowsShort = false;
-            }
-          }
-        }
-
-        // Technical Indicator Signals
-        const isEmaBull = (emaFast[i] || 0) > (emaSlow[i] || 0);
-        const isSupertrendBull = supertrend.trend[i] === 1;
-        const isRsiOversold = (rsi[i] || 50) < (indConfig.rsiOversold || 35);
-        const isRsiOverbought = (rsi[i] || 50) > (indConfig.rsiOverbought || 65);
-        const isStochRsiBull = (stochRsi.k[i] || 0) > (stochRsi.d[i] || 0) && (stochRsi.k[i] || 0) < 40;
-        const isStochRsiBear = (stochRsi.k[i] || 0) < (stochRsi.d[i] || 0) && (stochRsi.k[i] || 0) > 60;
-        const hasVolume = (rvol[i] || 1) >= (indConfig.rvolThreshold || 1.1);
-
-        let signal: TradeDirection | null = null;
-
-        // Long signal logic
-        if (
-          mtfAllowsLong &&
-          isSupertrendBull &&
-          (isRsiOversold || isStochRsiBull) &&
-          hasVolume &&
-          c.close > (emaTrend[i] || 0) * 0.98
-        ) {
-          signal = 'LONG';
-        }
-        // Short signal logic
-        else if (
-          mtfAllowsShort &&
-          !isSupertrendBull &&
-          (isRsiOverbought || isStochRsiBear) &&
-          hasVolume &&
-          c.close < (emaTrend[i] || Infinity) * 1.02
-        ) {
-          signal = 'SHORT';
-        }
+        const evalResult = SignalEvaluator.evaluate(candles, strategy, i, htfCandlesMap);
+        const signal = evalResult.signal;
 
         if (signal) {
           const isLong = signal === 'LONG';
@@ -348,7 +305,7 @@ export class BacktestEngine {
               totalFees: entryFee,
               totalSlippage: entrySlip,
               accumulatedPnL: 0,
-              mtfContext: mtfSnapshot,
+              mtfContext: evalResult.conditions.mtfFilter,
             };
           }
         }

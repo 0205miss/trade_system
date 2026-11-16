@@ -1,10 +1,10 @@
 import { supabase } from '../supabase/client';
 import { BingXVSTClient } from '../bingx/vstClient';
 import { CandleCacheManager } from '../bingx/cache';
-import { MultiTimeframeAggregator } from '../engine/mtf';
-import { calculateATR, calculateSupertrend, calculateRSI, calculateStochRSI, calculateEMA, calculateRVOL } from '../engine/indicators';
+import { MultiTimeframeAggregator, TimeframeCandleMap } from '../engine/mtf';
 import { Timeframe, StrategyModel, Candle, TradeDirection } from '../engine/types';
 import { OptStrategyService } from '../services/optStrategyService';
+import { SignalEvaluator, SignalEvaluationResult } from '../engine/signalEvaluator';
 
 export interface VSTScanReport {
   symbol: string;
@@ -15,6 +15,7 @@ export interface VSTScanReport {
   positionId?: string;
   orderId?: string;
   detail: string;
+  evaluation?: SignalEvaluationResult;
 }
 
 export class VSTTrader {
@@ -22,8 +23,8 @@ export class VSTTrader {
    * Scan market, manage active positions, and execute forward orders on BingX VST
    */
   static async scanAndExecute(symbol = 'BTC-USDT', timeframe: Timeframe = '1h'): Promise<VSTScanReport> {
-    // 1. Fetch latest candles
-    const candles = await CandleCacheManager.getCandles(symbol, timeframe, 150);
+    // 1. Fetch latest candles with freshness guaranteed
+    const candles = await CandleCacheManager.getCandles(symbol, timeframe, 150, true);
     if (candles.length < 35) {
       return {
         symbol,
@@ -41,6 +42,17 @@ export class VSTTrader {
     // 2. Load active strategy from opt_strategies
     const strategies = await OptStrategyService.getStrategies(timeframe);
     const activeStrat = strategies.find((s) => s.isActive && s.symbol === symbol) || OptStrategyService.getDefaultBaseline(timeframe, symbol);
+
+    // Fetch HTF candles for MTF filter alignment if needed
+    const htfMap: TimeframeCandleMap = {};
+    if (activeStrat.mtfReferenceConfig?.useHigherTimeframeTrendFilter) {
+      if (timeframe === '5m' || timeframe === '15m') {
+        htfMap['4h'] = await CandleCacheManager.getCandles(symbol, '4h', 150, false);
+        htfMap['1h'] = await CandleCacheManager.getCandles(symbol, '1h', 150, false);
+      } else if (timeframe === '1h') {
+        htfMap['4h'] = await CandleCacheManager.getCandles(symbol, '4h', 150, false);
+      }
+    }
 
     // 3. Check for existing open position in opt_live_positions
     const { data: openPosList } = await supabase
@@ -161,30 +173,11 @@ export class VSTTrader {
       };
     }
 
-    // 5. If no active position, check for entry signals
-    const closes = candles.map((c) => c.close);
-    const indConfig = activeStrat.indicatorsConfig;
-    const supertrend = calculateSupertrend(candles, indConfig.supertrendPeriod || 10, indConfig.supertrendMultiplier || 3.0);
-    const rsi = calculateRSI(closes, indConfig.rsiPeriod || 14);
-    const stochRsi = calculateStochRSI(closes, indConfig.rsiPeriod || 14, 14, 3, 3);
-    const emaTrend = calculateEMA(closes, 200);
-    const atr = calculateATR(candles, 14);
-    const rvol = calculateRVOL(candles, 20);
-
-    const i = candles.length - 1;
-    const isSupertrendBull = supertrend.trend[i] === 1;
-    const isRsiOversold = (rsi[i] || 50) < (indConfig.rsiOversold || 32);
-    const isRsiOverbought = (rsi[i] || 50) > (indConfig.rsiOverbought || 68);
-    const isStochRsiBull = (stochRsi.k[i] || 0) > (stochRsi.d[i] || 0) && (stochRsi.k[i] || 0) < 40;
-    const isStochRsiBear = (stochRsi.k[i] || 0) < (stochRsi.d[i] || 0) && (stochRsi.k[i] || 0) > 60;
-    const hasVolume = (rvol[i] || 1) >= (indConfig.rvolThreshold || 1.15);
-
-    let signal: TradeDirection | null = null;
-    if (isSupertrendBull && (isRsiOversold || isStochRsiBull) && hasVolume && currentPrice > (emaTrend[i] || 0) * 0.98) {
-      signal = 'LONG';
-    } else if (!isSupertrendBull && (isRsiOverbought || isStochRsiBear) && hasVolume && currentPrice < (emaTrend[i] || Infinity) * 1.02) {
-      signal = 'SHORT';
-    }
+    // 5. If no active position, check for entry signals using unified SignalEvaluator
+    // Evaluate on the most recently closed candle (candles.length - 2) to eliminate unclosed-bar volume distortion
+    const closedBarIndex = Math.max(0, candles.length - 2);
+    const evalResult = SignalEvaluator.evaluate(candles, activeStrat, closedBarIndex, htfMap);
+    const signal = evalResult.signal;
 
     if (!signal) {
       return {
@@ -193,13 +186,14 @@ export class VSTTrader {
         timestamp: Date.now(),
         currentPrice,
         actionTaken: 'NO_SIGNAL',
-        detail: `當前無觸發信號 (RSI: ${rsi[i]?.toFixed(1)}, Supertrend: ${isSupertrendBull ? '多' : '空'}, RVOL: ${rvol[i]?.toFixed(2)}x)`,
+        detail: evalResult.summary,
+        evaluation: evalResult,
       };
     }
 
     // 6. Execute Order on BingX VST
     const isLong = signal === 'LONG';
-    const currATR = atr[i] || currentPrice * 0.01;
+    const currATR = evalResult.atr || currentPrice * 0.01;
     const slDist = currATR * (activeStrat.riskConfig.slAtrMultiplier || 1.8);
     const slPrice = isLong ? currentPrice - slDist : currentPrice + slDist;
 
@@ -280,6 +274,7 @@ export class VSTTrader {
       positionId: posData?.id,
       orderId: orderRes.orderId,
       detail: `成功開倉 ${signal} ${targetQty} @ ${currentPrice} (SL: ${slPrice.toFixed(1)}, TP1: ${tp1Price.toFixed(1)})`,
+      evaluation: evalResult,
     };
   }
 
